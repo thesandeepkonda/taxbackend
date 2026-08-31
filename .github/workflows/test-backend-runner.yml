@@ -1,0 +1,52 @@
+name: Test Tax Backend Runner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: [self-hosted, Windows, X64, taxbackend]
+
+    steps:
+
+      - name: Test Runner
+        shell: powershell
+        run: |
+          Write-Host "===================================="
+          Write-Host "Tax Backend Runner Working"
+          Write-Host "===================================="
+
+          Write-Host "Computer:"
+          $env:COMPUTERNAME
+
+          Write-Host "User:"
+          $env:USERNAME
+
+      - name: Check Java
+        shell: powershell
+        run: |
+          java -version
+
+      - name: Check Maven Wrapper
+        shell: powershell
+        run: |
+          if (Test-Path "$env:GITHUB_WORKSPACE\mvnw.cmd") {
+              Write-Host "Maven wrapper found."
+          }
+          else {
+              Write-Error "mvnw.cmd not found."
+              exit 1
+          }
+
+      - name: Check Backend Folder
+        shell: powershell
+        run: |
+          $path = "C:\TaxBackend\app"
+
+          if (Test-Path $path) {
+              Write-Host "Backend deployment folder exists."
+          }
+          else {
+              New-Item -ItemType Directory -Path $path -Force
+              Write-Host "Backend deployment folder created."
+          }
