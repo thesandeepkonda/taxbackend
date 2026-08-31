@@ -9,6 +9,9 @@ jobs:
 
     steps:
 
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Test Runner
         shell: powershell
         run: |
@@ -17,21 +20,31 @@ jobs:
           Write-Host "===================================="
 
           Write-Host "Computer:"
-          $env:COMPUTERNAME
+          Write-Host $env:COMPUTERNAME
 
           Write-Host "User:"
-          $env:USERNAME
+          Write-Host $env:USERNAME
+
+          Write-Host "Workspace:"
+          Write-Host $env:GITHUB_WORKSPACE
 
       - name: Check Java
         shell: powershell
         run: |
+          Write-Host "Java version:"
           java -version
 
       - name: Check Maven Wrapper
         shell: powershell
         run: |
-          if (Test-Path "$env:GITHUB_WORKSPACE\mvnw.cmd") {
-              Write-Host "Maven wrapper found."
+
+          $mvn = "$env:GITHUB_WORKSPACE\mvnw.cmd"
+
+          Write-Host "Checking:"
+          Write-Host $mvn
+
+          if (Test-Path $mvn) {
+              Write-Host "SUCCESS: mvnw.cmd found."
           }
           else {
               Write-Error "mvnw.cmd not found."
@@ -41,12 +54,17 @@ jobs:
       - name: Check Backend Folder
         shell: powershell
         run: |
+
           $path = "C:\TaxBackend\app"
 
           if (Test-Path $path) {
               Write-Host "Backend deployment folder exists."
           }
           else {
-              New-Item -ItemType Directory -Path $path -Force
+              New-Item `
+                -ItemType Directory `
+                -Path $path `
+                -Force
+
               Write-Host "Backend deployment folder created."
           }
