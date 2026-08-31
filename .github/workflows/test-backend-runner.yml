@@ -1,70 +1,179 @@
-name: Test Tax Backend Runner
+name: Deploy Tax Backend
 
 on:
+  push:
+    branches:
+      - main
+
   workflow_dispatch:
 
 jobs:
-  test:
+  build-and-deploy:
+
     runs-on: [self-hosted, Windows, X64]
 
     steps:
 
+      # ==============================
+      # 1. Checkout
+      # ==============================
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Test Runner
-        shell: powershell
-        run: |
-          Write-Host "===================================="
-          Write-Host "Tax Backend Runner Working"
-          Write-Host "===================================="
 
-          Write-Host "Computer:"
-          Write-Host $env:COMPUTERNAME
-
-          Write-Host "User:"
-          Write-Host $env:USERNAME
-
-          Write-Host "Workspace:"
-          Write-Host $env:GITHUB_WORKSPACE
-
+      # ==============================
+      # 2. Check Java
+      # ==============================
       - name: Check Java
         shell: powershell
         run: |
           Write-Host "Java version:"
           java -version
 
-      - name: Check Maven Wrapper
+
+      # ==============================
+      # 3. Build Spring Boot
+      # ==============================
+      - name: Build Backend
+        shell: powershell
+        run: |
+          .\mvnw.cmd clean package -DskipTests
+
+
+      # ==============================
+      # 4. Find JAR
+      # ==============================
+      - name: Find JAR
         shell: powershell
         run: |
 
-          $mvn = "$env:GITHUB_WORKSPACE\mvnw.cmd"
+          $jar = Get-ChildItem `
+            "$env:GITHUB_WORKSPACE\target\*.jar" |
+            Where-Object {
+              $_.Name -notlike "*.original"
+            } |
+            Select-Object -First 1
 
-          Write-Host "Checking:"
-          Write-Host $mvn
-
-          if (Test-Path $mvn) {
-              Write-Host "SUCCESS: mvnw.cmd found."
-          }
-          else {
-              Write-Error "mvnw.cmd not found."
+          if ($null -eq $jar) {
+              Write-Error "No JAR found."
               exit 1
           }
 
-      - name: Check Backend Folder
+          Write-Host "JAR found:"
+          Write-Host $jar.FullName
+
+
+      # ==============================
+      # 5. Stop backend service
+      # ==============================
+      - name: Stop Backend Service
         shell: powershell
         run: |
 
-          $path = "C:\TaxBackend\app"
+          $service = Get-Service `
+            "TaxBackendService" `
+            -ErrorAction SilentlyContinue
 
-          if (Test-Path $path) {
-              Write-Host "Backend deployment folder exists."
+          if ($null -ne $service) {
+
+              Write-Host "Stopping TaxBackendService..."
+
+              Stop-Service `
+                "TaxBackendService" `
+                -Force `
+                -ErrorAction SilentlyContinue
+
+              Start-Sleep -Seconds 3
           }
           else {
-              New-Item `
-                -ItemType Directory `
-                -Path $path `
-                -Force
 
-              Write-Host "Backend deployment folder created."
+              Write-Host `
+                "TaxBackendService not found."
           }
+
+
+      # ==============================
+      # 6. Deploy JAR
+      # ==============================
+      - name: Deploy JAR
+        shell: powershell
+        run: |
+
+          $source = Get-ChildItem `
+            "$env:GITHUB_WORKSPACE\target\*.jar" |
+            Where-Object {
+              $_.Name -notlike "*.original"
+            } |
+            Select-Object -First 1
+
+          $destination = `
+            "C:\TaxBackend\app\matrix.jar"
+
+          Write-Host "Source:"
+          Write-Host $source.FullName
+
+          Write-Host "Destination:"
+          Write-Host $destination
+
+          Copy-Item `
+            $source.FullName `
+            $destination `
+            -Force
+
+          Write-Host "JAR deployment successful."
+
+
+      # ==============================
+      # 7. Start backend service
+      # ==============================
+      - name: Start Backend Service
+        shell: powershell
+        run: |
+
+          Start-Service "TaxBackendService"
+
+          Start-Sleep -Seconds 10
+
+          $status = `
+            (Get-Service "TaxBackendService").Status
+
+          Write-Host "Service status:"
+          Write-Host $status
+
+          if ($status -ne "Running") {
+
+              Write-Error `
+                "TaxBackendService failed to start."
+
+              exit 1
+          }
+
+          Write-Host `
+            "Tax Backend started successfully."
+
+
+      # ==============================
+      # 8. Verify port 8080
+      # ==============================
+      - name: Verify Backend Port
+        shell: powershell
+        run: |
+
+          Start-Sleep -Seconds 5
+
+          $result = `
+            Test-NetConnection `
+            localhost `
+            -Port 8080 `
+            -WarningAction SilentlyContinue
+
+          if (!$result.TcpTestSucceeded) {
+
+              Write-Error `
+                "Backend is not listening on port 8080."
+
+              exit 1
+          }
+
+          Write-Host `
+            "Backend is running on port 8080."
