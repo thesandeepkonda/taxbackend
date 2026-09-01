@@ -250,7 +250,7 @@
             
                 Write-Host "Waiting for service to stop..."
             
-                Start-Sleep -Seconds 5
+                Start-Sleep -Seconds 20
             }
             
             $service = Get-Service "TaxBackendService"
@@ -335,7 +335,7 @@
             
             Write-Host "Waiting for Spring Boot to start..."
             
-            Start-Sleep -Seconds 10
+            Start-Sleep -Seconds 20
             
             $service = Get-Service "TaxBackendService"
             
@@ -423,7 +423,7 @@
                     Write-Host $_.Exception.Message
                 }
             
-                Start-Sleep -Seconds 5
+                Start-Sleep -Seconds 20
             }
             
             
@@ -478,7 +478,7 @@
                 -Force `
                 -ErrorAction SilentlyContinue
             
-            Start-Sleep -Seconds 5
+            Start-Sleep -Seconds 20
             
             
             # ========================================================
@@ -544,7 +544,7 @@
             Start-Service `
                 "TaxBackendService"
             
-            Start-Sleep -Seconds 10
+            Start-Sleep -Seconds 20
             
             
             # ========================================================
@@ -610,7 +610,7 @@
                     Write-Host $_.Exception.Message
                 }
             
-                Start-Sleep -Seconds 5
+                Start-Sleep -Seconds 20
             }
             
             
