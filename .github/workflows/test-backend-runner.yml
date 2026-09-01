@@ -1,613 +1,659 @@
-name: Deploy Tax Backend
+  name: Deploy Tax Backend
 
-on:
-  push:
-    branches:
-      - main
+  on:
+    push:
+      branches:
+        - main
 
-  workflow_dispatch:
+    workflow_dispatch:
 
-jobs:
-  build-and-deploy:
+  jobs:
 
-    runs-on: [self-hosted, Windows, X64, taxbackend]
+    build-and-deploy:
 
-    steps:
+      runs-on: [self-hosted, Windows, X64]
 
-      # ==========================================
-      # 1. Checkout Code
-      # ==========================================
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      steps:
 
-
-      # ==========================================
-      # 2. Check Java
-      # ==========================================
-      - name: Check Java
-        shell: powershell
-        run: |
-
-          Write-Host "===================================="
-          Write-Host "Checking Java"
-          Write-Host "===================================="
-
-          java -version
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "Java is not available."
-              exit 1
-          }
+        # ============================================================
+        # 1. CHECKOUT
+        # ============================================================
+        - name: Checkout Code
+          uses: actions/checkout@v4
 
 
-      # ==========================================
-      # 3. Check Maven
-      # ==========================================
-      - name: Check Maven
-        shell: powershell
-        run: |
+        # ============================================================
+        # 2. CHECK JAVA
+        # ============================================================
+        - name: Check Java
+          shell: powershell
+          run: |
+            
+            Write-Host "===================================="
+            Write-Host "Checking Java"
+            Write-Host "===================================="
+            
+            java -version
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Java is not installed or not available in PATH."
+                exit 1
+            }
+        
 
-          Write-Host "===================================="
-          Write-Host "Checking Maven"
-          Write-Host "===================================="
+        # ============================================================
+        # 3. CHECK MAVEN
+        # ============================================================
+        - name: Check Maven
+          shell: powershell
+          run: |
+            
+            Write-Host "===================================="
+            Write-Host "Checking Maven"
+            Write-Host "===================================="
+            
+            .\mvnw.cmd --version
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Maven wrapper failed."
+                exit 1
+            }
+        
 
-          .\mvnw.cmd --version
+        # ============================================================
+        # 4. BUILD APPLICATION
+        #
+        # IMPORTANT:
+        # If this fails, deployment stops here.
+        # The existing production application is NOT touched.
+        # ============================================================
+        - name: Build Backend
+          shell: powershell
+          run: |
+            
+            Write-Host "===================================="
+            Write-Host "Building Spring Boot Backend"
+            Write-Host "===================================="
+            
+            .\mvnw.cmd clean package -DskipTests
+            
+            if ($LASTEXITCODE -ne 0) {
+            
+                Write-Error "BUILD FAILED."
+                Write-Error "Production application was NOT changed."
+            
+                exit 1
+            }
+            
+            Write-Host "===================================="
+            Write-Host "BUILD SUCCESSFUL"
+            Write-Host "===================================="
+        
 
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "Maven build tool is not working."
-              exit 1
-          }
+        # ============================================================
+        # 5. FIND NEW JAR
+        # ============================================================
+        - name: Find New JAR
+          shell: powershell
+          run: |
+            
+            Write-Host "===================================="
+            Write-Host "Finding New JAR"
+            Write-Host "===================================="
+            
+            $jar = Get-ChildItem `
+                "$env:GITHUB_WORKSPACE\target\*.jar" |
+                Where-Object {
+                    $_.Name -notlike "*.original"
+                } |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 1
+            
+            if ($null -eq $jar) {
+            
+                Write-Error "No JAR found."
+            
+                exit 1
+            }
+            
+            Write-Host "New JAR:"
+            Write-Host $jar.FullName
+            
+            Write-Host "Size:"
+            Write-Host "$([math]::Round($jar.Length / 1MB, 2)) MB"
+        
 
+        # ============================================================
+        # 6. VERIFY PRODUCTION JAR EXISTS
+        #
+        # If this is first deployment, there may be no backup.
+        # ============================================================
+        - name: Check Production JAR
+          shell: powershell
+          run: |
+            
+            $productionJar = "C:\TaxBackend\app\matrix.jar"
+            
+            Write-Host "===================================="
+            Write-Host "Checking Production JAR"
+            Write-Host "===================================="
+            
+            if (Test-Path $productionJar) {
+            
+                $jar = Get-Item $productionJar
+            
+                Write-Host "Production JAR found."
+                Write-Host "Path: $productionJar"
+                Write-Host "Size: $([math]::Round($jar.Length / 1MB, 2)) MB"
+            
+            }
+            else {
+            
+                Write-Host "No existing production JAR."
+                Write-Host "This is the first deployment."
+            }
+        
 
-      # ==========================================
-      # 4. Build Spring Boot
-      # ==========================================
-      - name: Build Backend
-        shell: powershell
-        run: |
+        # ============================================================
+        # 7. CREATE BACKUP
+        #
+        # IMPORTANT:
+        # Backup happens BEFORE stopping service.
+        # ============================================================
+        - name: Backup Current JAR
+          shell: powershell
+          run: |
+            
+            Write-Host "===================================="
+            Write-Host "Creating Production Backup"
+            Write-Host "===================================="
+            
+            $productionJar = "C:\TaxBackend\app\matrix.jar"
+            $backupDirectory = "C:\TaxBackend\backup"
+            
+            if (!(Test-Path $backupDirectory)) {
+            
+                New-Item `
+                    -ItemType Directory `
+                    -Path $backupDirectory `
+                    -Force | Out-Null
+            }
+            
+            if (Test-Path $productionJar) {
+            
+                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+            
+                $backupJar =
+                    "$backupDirectory\matrix_$timestamp.jar"
+            
+                Copy-Item `
+                    $productionJar `
+                    $backupJar `
+                    -Force
+            
+                Write-Host "Backup created:"
+                Write-Host $backupJar
+            
+                # Make backup path available to later steps
+                "BACKUP_JAR=$backupJar" |
+                    Out-File `
+                    -FilePath $env:GITHUB_ENV `
+                    -Encoding utf8 `
+                    -Append
+            
+            }
+            else {
+            
+                Write-Host "No production JAR to backup."
+            
+                "BACKUP_JAR=" |
+                    Out-File `
+                    -FilePath $env:GITHUB_ENV `
+                    -Encoding utf8 `
+                    -Append
+            }
+        
 
-          Write-Host "===================================="
-          Write-Host "Building Spring Boot Backend"
-          Write-Host "===================================="
-
-          .\mvnw.cmd clean package -DskipTests
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "Backend build failed."
-              exit 1
-          }
-
-          Write-Host "Backend build completed successfully."
-
-
-      # ==========================================
-      # 5. Find Generated JAR
-      # ==========================================
-      - name: Find JAR
-        shell: powershell
-        run: |
-
-          Write-Host "===================================="
-          Write-Host "Finding Generated JAR"
-          Write-Host "===================================="
-
-          $jar = Get-ChildItem `
-            "$env:GITHUB_WORKSPACE\target\*.jar" |
-            Where-Object {
-              $_.Name -notlike "*.original"
-            } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-
-          if ($null -eq $jar) {
-
-              Write-Error "No JAR found in target directory."
-
-              exit 1
-          }
-
-          Write-Host "JAR found:"
-          Write-Host $jar.FullName
-
-          Write-Host "JAR size:"
-          Write-Host "$([math]::Round($jar.Length / 1MB, 2)) MB"
-
-
-      # ==========================================
-      # 6. Check Current Deployment
-      # ==========================================
-      - name: Check Current Deployment
-        shell: powershell
-        run: |
-
-          Write-Host "===================================="
-          Write-Host "Checking Current Deployment"
-          Write-Host "===================================="
-
-          $destination = "C:\TaxBackend\app\matrix.jar"
-
-          if (Test-Path $destination) {
-
-              $currentJar = Get-Item $destination
-
-              Write-Host "Current JAR exists."
-              Write-Host "Path: $($currentJar.FullName)"
-              Write-Host "Size: $([math]::Round($currentJar.Length / 1MB, 2)) MB"
-              Write-Host "Last Modified: $($currentJar.LastWriteTime)"
-
-          }
-          else {
-
-              Write-Host "No existing JAR found."
-              Write-Host "This appears to be the first deployment."
-          }
-
-
-      # ==========================================
-      # 7. Stop Backend Service
-      # ==========================================
-      - name: Stop Backend Service
-        shell: powershell
-        run: |
-
-          Write-Host "===================================="
-          Write-Host "Stopping TaxBackendService"
-          Write-Host "===================================="
-
-          $service = Get-Service `
-            "TaxBackendService" `
-            -ErrorAction SilentlyContinue
-
-          if ($null -ne $service) {
-
-              Write-Host "Current service status:"
-              Write-Host $service.Status
-
-              if ($service.Status -eq "Running") {
-
-                  Write-Host "Stopping TaxBackendService..."
-
-                  Stop-Service `
+        # ============================================================
+        # 8. STOP PRODUCTION SERVICE
+        #
+        # ONLY NOW do we stop the running application.
+        #
+        # If build failed earlier, we never reach this step.
+        # ============================================================
+        - name: Stop Backend Service
+          shell: powershell
+          run: |
+            
+            Write-Host "===================================="
+            Write-Host "Stopping TaxBackendService"
+            Write-Host "===================================="
+            
+            $service = Get-Service `
+                "TaxBackendService" `
+                -ErrorAction SilentlyContinue
+            
+            if ($null -eq $service) {
+            
+                Write-Error "TaxBackendService does not exist."
+                exit 1
+            }
+            
+            Write-Host "Current status:"
+            Write-Host $service.Status
+            
+            if ($service.Status -eq "Running") {
+            
+                Stop-Service `
                     "TaxBackendService" `
                     -Force
+            
+                Write-Host "Waiting for service to stop..."
+            
+                Start-Sleep -Seconds 5
+            }
+            
+            $service = Get-Service "TaxBackendService"
+            
+            Write-Host "Final status:"
+            Write-Host $service.Status
+            
+            if ($service.Status -ne "Stopped") {
+            
+                Write-Error "Could not stop TaxBackendService."
+                exit 1
+            }
+        
 
-                  Start-Sleep -Seconds 5
-              }
-
-              $service = Get-Service "TaxBackendService"
-
-              Write-Host "Service status after stop:"
-              Write-Host $service.Status
-
-          }
-          else {
-
-              Write-Host "TaxBackendService not found."
-
-              Write-Host "If this is the first deployment,"
-              Write-Host "make sure the WinSW service is installed."
-          }
-
-
-      # ==========================================
-      # 8. Backup Current JAR
-      # ==========================================
-      - name: Backup Current JAR
-        shell: powershell
-        run: |
-
-          Write-Host "===================================="
-          Write-Host "Creating Deployment Backup"
-          Write-Host "===================================="
-
-          $currentJar = "C:\TaxBackend\app\matrix.jar"
-
-          $backupDirectory = "C:\TaxBackend\backup"
-
-          if (!(Test-Path $backupDirectory)) {
-
-              Write-Host "Creating backup directory..."
-
-              New-Item `
-                -ItemType Directory `
-                -Path $backupDirectory `
-                -Force | Out-Null
-          }
-
-          if (Test-Path $currentJar) {
-
-              $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-
-              $backupJar = `
-                "$backupDirectory\matrix_$timestamp.jar"
-
-              Copy-Item `
-                $currentJar `
-                $backupJar `
+        # ============================================================
+        # 9. DEPLOY NEW JAR
+        # ============================================================
+        - name: Deploy New JAR
+          shell: powershell
+          run: |
+            
+            Write-Host "===================================="
+            Write-Host "Deploying New JAR"
+            Write-Host "===================================="
+            
+            $source = Get-ChildItem `
+                "$env:GITHUB_WORKSPACE\target\*.jar" |
+                Where-Object {
+                    $_.Name -notlike "*.original"
+                } |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 1
+            
+            $destination = "C:\TaxBackend\app\matrix.jar"
+            
+            if ($null -eq $source) {
+            
+                Write-Error "New JAR not found."
+                exit 1
+            }
+            
+            if (!(Test-Path "C:\TaxBackend\app")) {
+            
+                New-Item `
+                    -ItemType Directory `
+                    -Path "C:\TaxBackend\app" `
+                    -Force | Out-Null
+            }
+            
+            Write-Host "Source:"
+            Write-Host $source.FullName
+            
+            Write-Host "Destination:"
+            Write-Host $destination
+            
+            Copy-Item `
+                $source.FullName `
+                $destination `
                 -Force
-
-              Write-Host "Backup created:"
-              Write-Host $backupJar
-
-              # Save backup path for later steps
-              "BACKUP_JAR=$backupJar" |
-                Out-File `
-                  -FilePath $env:GITHUB_ENV `
-                  -Encoding utf8 `
-                  -Append
-
-          }
-          else {
-
-              Write-Host "No previous JAR exists."
-
-              # Empty value means first deployment
-              "BACKUP_JAR=" |
-                Out-File `
-                  -FilePath $env:GITHUB_ENV `
-                  -Encoding utf8 `
-                  -Append
-          }
-
-
-      # ==========================================
-      # 9. Deploy New JAR
-      # ==========================================
-      - name: Deploy JAR
-        shell: powershell
-        run: |
-
-          Write-Host "===================================="
-          Write-Host "Deploying New JAR"
-          Write-Host "===================================="
-
-          $source = Get-ChildItem `
-            "$env:GITHUB_WORKSPACE\target\*.jar" |
-            Where-Object {
-              $_.Name -notlike "*.original"
-            } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-
-          $destination = `
-            "C:\TaxBackend\app\matrix.jar"
-
-          if ($null -eq $source) {
-
-              Write-Error "Source JAR not found."
-
-              exit 1
-          }
-
-          Write-Host "Source:"
-          Write-Host $source.FullName
-
-          Write-Host "Destination:"
-          Write-Host $destination
-
-          # Make sure destination directory exists
-          $destinationDirectory = `
-            Split-Path $destination -Parent
-
-          if (!(Test-Path $destinationDirectory)) {
-
-              Write-Host "Creating destination directory..."
-
-              New-Item `
-                -ItemType Directory `
-                -Path $destinationDirectory `
-                -Force | Out-Null
-          }
-
-          Copy-Item `
-            $source.FullName `
-            $destination `
-            -Force
-
-          if (!(Test-Path $destination)) {
-
-              Write-Error "JAR deployment failed."
-
-              exit 1
-          }
-
-          $deployedJar = Get-Item $destination
-
-          Write-Host "New JAR deployed successfully."
-
-          Write-Host "Deployed size:"
-          Write-Host "$([math]::Round($deployedJar.Length / 1MB, 2)) MB"
-
-
-      # ==========================================
-      # 10. Start Backend Service
-      # ==========================================
-      - name: Start Backend Service
-        shell: powershell
-        run: |
-
-          Write-Host "===================================="
-          Write-Host "Starting TaxBackendService"
-          Write-Host "===================================="
-
-          $service = Get-Service `
-            "TaxBackendService" `
-            -ErrorAction SilentlyContinue
-
-          if ($null -eq $service) {
-
-              Write-Error `
-                "TaxBackendService does not exist."
-
-              Write-Host ""
-              Write-Host "Make sure WinSW service is installed."
-              Write-Host "Expected service:"
-              Write-Host "TaxBackendService"
-
-              exit 1
-          }
-
-          Start-Service `
-            "TaxBackendService"
-
-          Write-Host "Waiting for service to start..."
-
-          Start-Sleep -Seconds 10
-
-          $status = `
-            (Get-Service "TaxBackendService").Status
-
-          Write-Host "Service status:"
-          Write-Host $status
-
-          if ($status -ne "Running") {
-
-              Write-Error `
-                "TaxBackendService failed to start."
-
-              exit 1
-          }
-
-          Write-Host ""
-          Write-Host "Tax Backend started successfully."
-
-
-      # ==========================================
-      # Health Check + Automatic Rollback
-      # ==========================================
-      - name: Verify Backend and Rollback if Failed
-        shell: powershell
-        run: |
-
-          Write-Host "===================================="
-          Write-Host "Checking Backend Health"
-          Write-Host "===================================="
-
-          Start-Sleep -Seconds 10
-
-          $healthUrl = "http://localhost:8080/actuator/health"
-
-          Write-Host "Health URL:"
-          Write-Host $healthUrl
-
-
-          # ======================================
-          # Application Health Check
-          # ======================================
-
-          try {
-
-              $response = Invoke-WebRequest `
-                -Uri $healthUrl `
-                -UseBasicParsing `
-                -TimeoutSec 10
-
-              Write-Host "HTTP Status:"
-              Write-Host $response.StatusCode
-
-              Write-Host "Response:"
-              Write-Host $response.Content
-
-              $health = $response.Content | ConvertFrom-Json
-
-          }
-          catch {
-
-              Write-Host "Health check request failed."
-
-              $health = $null
-          }
-
-
-          # ======================================
-          # Check HEALTH = UP
-          # ======================================
-
-          if (
-              $null -ne $health -and
-              $health.status -eq "UP"
-          ) {
-
-              Write-Host "===================================="
-              Write-Host "DEPLOYMENT SUCCESSFUL"
-              Write-Host "===================================="
-
-              Write-Host "Spring Boot Actuator:"
-              Write-Host "UP"
-
-              Write-Host "Backend is healthy on port 8080."
-
-              $service = Get-Service `
+            
+            if (!(Test-Path $destination)) {
+            
+                Write-Error "New JAR deployment failed."
+                exit 1
+            }
+            
+            Write-Host "New JAR deployed successfully."
+        
+
+        # ============================================================
+        # 10. START NEW VERSION
+        # ============================================================
+        - name: Start Backend Service
+          shell: powershell
+          run: |
+            
+            Write-Host "===================================="
+            Write-Host "Starting New Backend Version"
+            Write-Host "===================================="
+            
+            Start-Service "TaxBackendService"
+            
+            Write-Host "Waiting for Spring Boot to start..."
+            
+            Start-Sleep -Seconds 10
+            
+            $service = Get-Service "TaxBackendService"
+            
+            Write-Host "Service status:"
+            Write-Host $service.Status
+            
+            if ($service.Status -ne "Running") {
+            
+                Write-Error "New version failed to start."
+                exit 1
+            }
+        
+
+        # ============================================================
+        # 11. ACTUATOR HEALTH CHECK
+        #
+        # If /actuator/health returns:
+        #
+        # {"status":"UP"}
+        #
+        # deployment succeeds.
+        #
+        # If it does NOT become UP:
+        #   STOP NEW VERSION
+        #   RESTORE OLD JAR
+        #   START OLD VERSION
+        #   CHECK ACTUATOR AGAIN
+        # ============================================================
+        - name: Health Check and Automatic Rollback
+          shell: powershell
+          run: |
+            
+            Write-Host "===================================="
+            Write-Host "PRODUCTION HEALTH CHECK"
+            Write-Host "===================================="
+            
+            $healthUrl = "http://localhost:8080/actuator/health"
+            
+            $healthy = $false
+            
+            # --------------------------------------------------------
+            # Try health check 12 times
+            # 12 × 5 seconds = maximum 60 seconds
+            # --------------------------------------------------------
+            
+            for ($i = 1; $i -le 12; $i++) {
+            
+                Write-Host ""
+                Write-Host "Health check attempt $i/12..."
+            
+                try {
+            
+                    $response = Invoke-WebRequest `
+                        -Uri $healthUrl `
+                        -UseBasicParsing `
+                        -TimeoutSec 5 `
+                        -ErrorAction Stop
+            
+                    Write-Host "HTTP Status: $($response.StatusCode)"
+            
+                    Write-Host "Response:"
+                    Write-Host $response.Content
+            
+                    if ($response.StatusCode -eq 200) {
+            
+                        $health =
+                            $response.Content | ConvertFrom-Json
+            
+                        Write-Host "Application status:"
+                        Write-Host $health.status
+            
+                        if ($health.status -eq "UP") {
+            
+                            $healthy = $true
+            
+                            break
+                        }
+                    }
+            
+                }
+                catch {
+            
+                    Write-Host "Backend not ready yet."
+            
+                    Write-Host $_.Exception.Message
+                }
+            
+                Start-Sleep -Seconds 5
+            }
+            
+            
+            # ========================================================
+            # NEW VERSION HEALTHY
+            # ========================================================
+            
+            if ($healthy) {
+            
+                Write-Host ""
+                Write-Host "===================================="
+                Write-Host "DEPLOYMENT SUCCESSFUL"
+                Write-Host "===================================="
+            
+                Write-Host "Actuator:"
+                Write-Host "UP"
+            
+                Write-Host "Backend:"
+                Write-Host "Healthy"
+            
+                Write-Host "Port:"
+                Write-Host "8080"
+            
+                exit 0
+            }
+            
+            
+            # ========================================================
+            # NEW VERSION FAILED
+            # ========================================================
+            
+            Write-Host ""
+            Write-Host "===================================="
+            Write-Host "NEW VERSION FAILED"
+            Write-Host "===================================="
+            
+            Write-Host "Actuator did not return UP."
+            
+            Write-Host ""
+            Write-Host "Starting automatic rollback..."
+            
+            
+            # ========================================================
+            # STOP FAILED NEW VERSION
+            # ========================================================
+            
+            Write-Host ""
+            Write-Host "Stopping failed application..."
+            
+            Stop-Service `
+                "TaxBackendService" `
+                -Force `
+                -ErrorAction SilentlyContinue
+            
+            Start-Sleep -Seconds 5
+            
+            
+            # ========================================================
+            # CHECK BACKUP
+            # ========================================================
+            
+            if ([string]::IsNullOrWhiteSpace($env:BACKUP_JAR)) {
+            
+                Write-Error "No previous JAR backup exists."
+            
+                Write-Error "Cannot perform automatic rollback."
+            
+                exit 1
+            }
+            
+            if (!(Test-Path $env:BACKUP_JAR)) {
+            
+                Write-Error `
+                    "Backup JAR does not exist: $env:BACKUP_JAR"
+            
+                exit 1
+            }
+            
+            
+            # ========================================================
+            # RESTORE PREVIOUS JAR
+            # ========================================================
+            
+            Write-Host ""
+            Write-Host "===================================="
+            Write-Host "RESTORING PREVIOUS VERSION"
+            Write-Host "===================================="
+            
+            Write-Host "Backup:"
+            Write-Host $env:BACKUP_JAR
+            
+            $productionJar =
+                "C:\TaxBackend\app\matrix.jar"
+            
+            Copy-Item `
+                $env:BACKUP_JAR `
+                $productionJar `
+                -Force
+            
+            if (!(Test-Path $productionJar)) {
+            
+                Write-Error `
+                    "Previous JAR could not be restored."
+            
+                exit 1
+            }
+            
+            Write-Host "Previous JAR restored."
+            
+            
+            # ========================================================
+            # START PREVIOUS VERSION
+            # ========================================================
+            
+            Write-Host ""
+            Write-Host "Starting previous version..."
+            
+            Start-Service `
                 "TaxBackendService"
+            
+            Start-Sleep -Seconds 10
+            
+            
+            # ========================================================
+            # CHECK SERVICE
+            # ========================================================
+            
+            $service =
+                Get-Service "TaxBackendService"
+            
+            Write-Host ""
+            Write-Host "Service status:"
+            Write-Host $service.Status
+            
+            
+            # ========================================================
+            # CHECK PREVIOUS VERSION HEALTH
+            # ========================================================
+            
+            $rollbackHealthy = $false
+            
+            for ($i = 1; $i -le 12; $i++) {
+            
+                Write-Host ""
+                Write-Host "Rollback health check attempt $i/12..."
+            
+                try {
+            
+                    $rollbackResponse =
+                        Invoke-WebRequest `
+                            -Uri $healthUrl `
+                            -UseBasicParsing `
+                            -TimeoutSec 5 `
+                            -ErrorAction Stop
+            
+                    Write-Host "HTTP Status:"
+                    Write-Host $rollbackResponse.StatusCode
+            
+                    Write-Host "Response:"
+                    Write-Host $rollbackResponse.Content
+            
+                    if ($rollbackResponse.StatusCode -eq 200) {
+            
+                        $rollbackHealth =
+                            $rollbackResponse.Content |
+                            ConvertFrom-Json
+            
+                        Write-Host "Rollback application status:"
+                        Write-Host $rollbackHealth.status
+            
+                        if ($rollbackHealth.status -eq "UP") {
+            
+                            $rollbackHealthy = $true
+            
+                            break
+                        }
+                    }
+            
+                }
+                catch {
+            
+                    Write-Host "Previous version not ready yet."
+            
+                    Write-Host $_.Exception.Message
+                }
+            
+                Start-Sleep -Seconds 5
+            }
+            
+            
+            # ========================================================
+            # ROLLBACK SUCCESSFUL
+            # ========================================================
+            
+            if (
+                $service.Status -eq "Running" -and
+                $rollbackHealthy
+            ) {
+            
+                Write-Host ""
+                Write-Host "===================================="
+                Write-Host "ROLLBACK SUCCESSFUL"
+                Write-Host "===================================="
+            
+                Write-Host "Previous version restored."
+                Write-Host "Previous version is healthy."
+                Write-Host ""
+                Write-Host "IMPORTANT:"
+                Write-Host "The new deployment FAILED."
+                Write-Host "Production was automatically restored."
+            
+                # Fail the GitHub Actions workflow intentionally.
+                exit 1
+            }
+            
+            
+            # ========================================================
+            # ROLLBACK FAILED
+            # ========================================================
+            
+            Write-Host ""
+            Write-Host "===================================="
+            Write-Host "ROLLBACK FAILED"
+            Write-Host "===================================="
+            
+            Write-Error `
+                "Previous version could not be restored successfully."
+            
+            Write-Error `
+                "Production backend is NOT healthy."
+            
+            exit 1
 
-              Write-Host "Service status:"
-              Write-Host $service.Status
-
-              exit 0
-          }
-
-
-          # ======================================
-          # New version failed
-          # ======================================
-
-          Write-Host "===================================="
-          Write-Host "NEW VERSION FAILED"
-          Write-Host "===================================="
-
-          Write-Host "Spring Boot Actuator health is NOT UP."
-
-          Write-Host "Starting rollback..."
-
-
-          # ======================================
-          # Stop failed version
-          # ======================================
-
-          Write-Host "Stopping failed version..."
-
-          Stop-Service `
-            "TaxBackendService" `
-            -Force `
-            -ErrorAction SilentlyContinue
-
-          Start-Sleep -Seconds 3
-
-
-          # ======================================
-          # Check backup
-          # ======================================
-
-          if ([string]::IsNullOrWhiteSpace($env:BACKUP_JAR)) {
-
-              Write-Error `
-                "No backup JAR available for rollback."
-
-              Write-Host "This may be the first deployment."
-
-              exit 1
-          }
-
-
-          if (!(Test-Path $env:BACKUP_JAR)) {
-
-              Write-Error `
-                "Backup JAR does not exist: $env:BACKUP_JAR"
-
-              exit 1
-          }
-
-
-          # ======================================
-          # Restore previous version
-          # ======================================
-
-          Write-Host "===================================="
-          Write-Host "Restoring Previous Version"
-          Write-Host "===================================="
-
-          Write-Host "Backup:"
-          Write-Host $env:BACKUP_JAR
-
-          $destination = `
-            "C:\TaxBackend\app\matrix.jar"
-
-          Copy-Item `
-            $env:BACKUP_JAR `
-            $destination `
-            -Force
-
-          if (!(Test-Path $destination)) {
-
-              Write-Error `
-                "Failed to restore previous JAR."
-
-              exit 1
-          }
-
-          Write-Host "Previous JAR restored successfully."
-
-
-          # ======================================
-          # Start previous version
-          # ======================================
-
-          Write-Host "Starting previous version..."
-
-          Start-Service `
-            "TaxBackendService"
-
-          Start-Sleep -Seconds 15
-
-
-          # ======================================
-          # Verify rollback health
-          # ======================================
-
-          Write-Host "===================================="
-          Write-Host "Verifying Rollback"
-          Write-Host "===================================="
-
-
-          try {
-
-              $rollbackResponse = Invoke-WebRequest `
-                -Uri $healthUrl `
-                -UseBasicParsing `
-                -TimeoutSec 10
-
-              Write-Host "Rollback HTTP Status:"
-              Write-Host $rollbackResponse.StatusCode
-
-              Write-Host "Rollback Response:"
-              Write-Host $rollbackResponse.Content
-
-              $rollbackHealth = `
-                $rollbackResponse.Content | ConvertFrom-Json
-
-          }
-          catch {
-
-              Write-Host "Rollback health check request failed."
-
-              $rollbackHealth = $null
-          }
-
-
-          $service = `
-            Get-Service "TaxBackendService"
-
-
-          # ======================================
-          # Rollback successful
-          # ======================================
-
-          if (
-              $service.Status -eq "Running" -and
-              $null -ne $rollbackHealth -and
-              $rollbackHealth.status -eq "UP"
-          ) {
-
-              Write-Host "===================================="
-              Write-Host "ROLLBACK SUCCESSFUL"
-              Write-Host "===================================="
-
-              Write-Host "Previous version restored."
-              Write-Host "Previous version is healthy."
-
-              # Fail workflow because the NEW version failed.
-              exit 1
-          }
-
-
-          # ======================================
-          # Rollback failed
-          # ======================================
-
-          Write-Error `
-            "ROLLBACK FAILED."
-
-          Write-Error `
-            "Previous version is not healthy."
-
-          exit 1
