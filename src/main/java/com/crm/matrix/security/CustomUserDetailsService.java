@@ -1,4 +1,4 @@
-package com.crm.matrix.security;
+ package com.crm.matrix.security;
 
 import com.crm.matrix.entity.User;
 import com.crm.matrix.repository.UserRepository;
@@ -15,13 +15,18 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
 
-
-
     @Override
     @Transactional(readOnly = true)
-    public UserDetails loadUserByUsername(String employeeCode) throws UsernameNotFoundException {
+    public UserDetails loadUserByUsername(String employeeCode)
+            throws UsernameNotFoundException {
 
-        User user = userRepository.findByEmployeeCode(employeeCode).orElseThrow(() -> new UsernameNotFoundException("Employee not found: " + employeeCode));
+        User user = userRepository
+                .findByEmployeeCode(employeeCode)
+                .orElseThrow(() ->
+                        new UsernameNotFoundException(
+                                "Employee not found: " + employeeCode
+                        )
+                );
 
         return new CustomUserDetails(user);
     }
