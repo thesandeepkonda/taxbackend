@@ -633,7 +633,7 @@ jobs:
           Start-Sleep -Seconds 10
 
           # Rollback health check
-          $healthUrl = "http://127.0.0.1:8080/actuator/health"
+          $healthUrl = "http://127.0.0.1:8081/actuator/health"
 
           $healthy = $false
 
