@@ -27,9 +27,7 @@ public class CallService {
     private final UserRepository userRepository;
 
 
-    // =========================================================
-    // START CALL
-    // =========================================================
+
 
     public CallResponseDto startCall(
             Long clientId,

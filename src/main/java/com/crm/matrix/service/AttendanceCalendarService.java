@@ -231,76 +231,44 @@ public class AttendanceCalendarService {
         return result;
     }
 
-
     // =========================================================
     // DETERMINE STATUS
     // =========================================================
-
     private AttendanceStatus determineStatus(
             Attendance attendance,
             LeaveRequest leave,
             LocalDate date
     ) {
-
         /*
          * ACTUAL ATTENDANCE HAS PRIORITY.
-         *
-         * Example:
-         *
-         * Employee has approved leave
-         * BUT employee actually checked in.
-         *
-         * We show the actual attendance status.
          */
-
         if (attendance != null) {
-
+            // --> IF CHECKED IN, BUT NO CHECKOUT, AND IT'S A PAST DATE <--
+            if (attendance.getCheckIn() != null && attendance.getCheckOut() == null && date.isBefore(LocalDate.now())) {
+                return AttendanceStatus.NOT_CHECKED_OUT;
+            }
             return attendance.getStatus();
         }
-
 
         // -----------------------------------------------------
         // APPROVED LEAVE
         // -----------------------------------------------------
-
         if (leave != null) {
-
             return AttendanceStatus.ON_LEAVE;
         }
-
 
         // -----------------------------------------------------
         // FUTURE DATE
         // -----------------------------------------------------
-
-        /*
-         * Don't mark future dates as ABSENT.
-         *
-         * Example:
-         *
-         * Today = Aug 31
-         *
-         * Sep 10 should not be ABSENT yet.
-         *
-         * There is no UPCOMING enum in your current
-         * AttendanceStatus, so we return null.
-         *
-         * Frontend can display it as "Upcoming".
-         */
-
         if (date.isAfter(LocalDate.now())) {
-
             return null;
         }
-
 
         // -----------------------------------------------------
         // NO ATTENDANCE + NO LEAVE
         // -----------------------------------------------------
-
         return AttendanceStatus.ABSENT;
     }
-
 
     // =========================================================
     // BUILD CALENDAR RESPONSE

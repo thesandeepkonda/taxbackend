@@ -12,5 +12,6 @@ public class AttendancePolicyResponse {
     private LocalTime startTime;
     private LocalTime endTime;
     private Integer allowedBreakMinutes;
+    private String workingDays;
     private Boolean active;
 }

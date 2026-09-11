@@ -45,7 +45,6 @@ public class BulkEmployeeService {
             "Work Mode"};
 
 
-    @Transactional
     public BulkEmployeeResponse uploadEmployees(MultipartFile file) {
 
         if (file == null || file.isEmpty()) {

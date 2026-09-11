@@ -25,6 +25,9 @@ public class AttendancePolicy extends BaseEntity {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
+    @Column(name = "working_days", length = 50)
+    private String workingDays;
+
 
     // The new flexible daily allowance
     @Column(name = "allowed_break_minutes", nullable = false)

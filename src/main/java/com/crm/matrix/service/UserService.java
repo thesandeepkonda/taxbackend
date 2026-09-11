@@ -4,10 +4,12 @@ import com.crm.matrix.dto.*;
 import com.crm.matrix.entity.*;
 import com.crm.matrix.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Pageable;
 import java.security.SecureRandom;
 import java.util.List;
 
@@ -410,7 +412,7 @@ public class UserService {
 
 
     @Transactional
-    public void quickAssign(Long userId, QuickAssignRequestDto request, String adminEmployeeCode) {
+    public void quickAssign(Long userId, QuickAssignRequestDto request, String adminEmployeeCode, boolean override) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Employee not found: " + userId));
 
@@ -418,7 +420,6 @@ public class UserService {
         Department oldDepartment = user.getDepartment();
         Team oldTeam = user.getTeam();
         Role oldRole = user.getRole();
-
         boolean isModified = false;
 
         // =========================================================
@@ -426,14 +427,11 @@ public class UserService {
         // =========================================================
         if (request.getDepartmentId() != null &&
                 (oldDepartment == null || !oldDepartment.getId().equals(request.getDepartmentId()))) {
-
             Department newDepartment = departmentRepository.findById(request.getDepartmentId())
                     .orElseThrow(() -> new IllegalArgumentException("Department not found"));
-
             if (!Boolean.TRUE.equals(newDepartment.getActive())) {
                 throw new IllegalArgumentException("Cannot assign to an inactive department");
             }
-
             user.setDepartment(newDepartment);
             logActivity(user, adminEmployeeCode, "DEPARTMENT_CHANGED",
                     "Moved from " + (oldDepartment != null ? oldDepartment.getName() : "None") +
@@ -442,20 +440,37 @@ public class UserService {
         }
 
         // =========================================================
-        // 2. UPDATE TEAM
+        // 2. UPDATE TEAM & TEAM LEAD VALIDATION
         // =========================================================
         if (request.getTeamId() != null &&
                 (oldTeam == null || !oldTeam.getId().equals(request.getTeamId()))) {
-
             Team newTeam = teamRepository.findById(request.getTeamId())
                     .orElseThrow(() -> new IllegalArgumentException("Team not found"));
-
             if (!Boolean.TRUE.equals(newTeam.getActive())) {
                 throw new IllegalArgumentException("Cannot assign to an inactive team");
             }
             // Ensure the new team belongs to the user's current (or newly set) department
             if (!newTeam.getDepartment().getId().equals(user.getDepartment().getId())) {
                 throw new IllegalArgumentException("Team does not belong to the employee's department");
+            }
+
+            // CHECK IF NEW TEAM ALREADY HAS A LEAD (IF USER IS BEING ASSIGNED AS TEAM LEAD)
+            Role targetRole = request.getRoleId() != null ?
+                    roleRepository.findById(request.getRoleId()).orElse(user.getRole()) : user.getRole();
+
+            if (isTeamLead(targetRole)) {
+                if (newTeam.getTeamLead() != null && !newTeam.getTeamLead().getId().equals(user.getId())) {
+                    if (!override) {
+                        throw new IllegalStateException("Team already has a team lead assigned. Please confirm override to replace them.");
+                    } else {
+                        // Demote old team lead to EMPLOYEE
+                        User oldLead = newTeam.getTeamLead();
+                        Role employeeRole = roleRepository.findByName("EMPLOYEE")
+                                .orElseThrow(() -> new IllegalStateException("EMPLOYEE role not found"));
+                        oldLead.setRole(employeeRole);
+                        userRepository.save(oldLead);
+                    }
+                }
             }
 
             // Handle old team lead cleanup if necessary
@@ -476,12 +491,29 @@ public class UserService {
         // =========================================================
         if (request.getRoleId() != null &&
                 (oldRole == null || !oldRole.getId().equals(request.getRoleId()))) {
-
             Role newRole = roleRepository.findById(request.getRoleId())
                     .orElseThrow(() -> new IllegalArgumentException("Role not found"));
-
             if (!Boolean.TRUE.equals(newRole.getActive())) {
                 throw new IllegalArgumentException("Cannot assign an inactive role");
+            }
+
+            // Check if becoming a team lead on current team
+            Team targetTeam = user.getTeam();
+            if (isTeamLead(newRole)) {
+                if (targetTeam == null) {
+                    throw new IllegalArgumentException("A TEAM_LEAD must be assigned to a team");
+                }
+                if (targetTeam.getTeamLead() != null && !targetTeam.getTeamLead().getId().equals(user.getId())) {
+                    if (!override) {
+                        throw new IllegalStateException("Team already has a team lead assigned. Please confirm override to replace them.");
+                    } else {
+                        User oldLead = targetTeam.getTeamLead();
+                        Role employeeRole = roleRepository.findByName("EMPLOYEE")
+                                .orElseThrow(() -> new IllegalStateException("EMPLOYEE role not found"));
+                        oldLead.setRole(employeeRole);
+                        userRepository.save(oldLead);
+                    }
+                }
             }
 
             user.setRole(newRole);
@@ -496,14 +528,10 @@ public class UserService {
         // =========================================================
         if (isModified) {
             User savedUser = userRepository.save(user);
-
-            // If the user was just made a team lead, or moved to a new team as a team lead
             if (isTeamLead(savedUser.getRole()) && savedUser.getTeam() != null) {
                 Team currentTeam = savedUser.getTeam();
-                if (currentTeam.getTeamLead() == null || !currentTeam.getTeamLead().getId().equals(savedUser.getId())) {
-                    currentTeam.setTeamLead(savedUser);
-                    teamRepository.save(currentTeam);
-                }
+                currentTeam.setTeamLead(savedUser);
+                teamRepository.save(currentTeam);
             }
         }
     }
@@ -540,5 +568,43 @@ public class UserService {
                     .teamName(user.getTeam() != null ? user.getTeam().getName() : "Unassigned")
                     .build();
         }).toList();
+    }
+    @Transactional(readOnly = true)
+    public Page<CreateEmployeeResponse> getUsersByStatus(boolean active, Pageable pageable) {
+        return userRepository.findByActive(active, pageable)
+                .map(user -> buildEmployeeResponse(user, null));
+    }
+
+    @Transactional
+    public void updateUserStatus(Long id, boolean active, String adminEmployeeCode) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Employee not found: " + id));
+
+        if (Boolean.TRUE.equals(user.getActive()) == active) {
+            throw new IllegalStateException("User is already " + (active ? "active" : "inactive"));
+        }
+
+        user.setActive(active);
+        userRepository.save(user);
+
+        String action = active ? "USER_ACTIVATED" : "USER_DEACTIVATED";
+        String description = active ? "Activated user account" : "Deactivated user account";
+        logActivity(user, adminEmployeeCode, action, description);
+    }
+
+    @Transactional
+    public String adminResetPassword(Long userId, String adminEmployeeCode) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Employee not found: " + userId));
+
+        // Generate a new secure temporary password
+        String newTemporaryPassword = generateTemporaryPassword();
+        user.setPassword(passwordEncoder.encode(newTemporaryPassword));
+        userRepository.save(user);
+
+        // Audit log the password reset action
+        logActivity(user, adminEmployeeCode, "PASSWORD_RESET", "Admin performed password reset");
+
+        return newTemporaryPassword;
     }
 }

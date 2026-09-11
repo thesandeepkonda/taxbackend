@@ -50,33 +50,10 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 .authorizeHttpRequests(auth -> auth
-
-                        // Authentication APIs - public
                         .requestMatchers("/api/auth/**").permitAll()
-
-                        // Error endpoint - public
                         .requestMatchers("/error").permitAll()
-
-                        // Actuator health - public
-                        .requestMatchers(
-                                "/actuator/health",
-                                "/actuator/health/**"
-                        ).permitAll()
-
-                        // Swagger / OpenAPI - public
-                        .requestMatchers(
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/v3/api-docs/**",
-                                "/swagger/**",
-                                "/api-docs/**"
-                        ).permitAll()
-
-                        // All other APIs require JWT
-                        .anyRequest().authenticated()
-                )
-
-
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/swagger/**", "/api-docs/**").permitAll()
+                        .anyRequest().authenticated())
 
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(customAuthenticationEntryPoint())

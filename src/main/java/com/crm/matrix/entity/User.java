@@ -128,4 +128,22 @@ public class User extends BaseEntity {
             fetch = FetchType.LAZY
     )
     private Set<Attendance> attendances = new HashSet<>();
+
+    @Column(
+            name = "callhippo_api_token",
+            length = 1000
+    )
+    private String callHippoApiToken;
+
+    @Column(
+            name = "callhippo_from_number",
+            length = 30
+    )
+    private String callHippoFromNumber;
+
+    @Column(
+            name = "callhippo_agent_id",
+            length = 100
+    )
+    private String callHippoAgentId;
 }

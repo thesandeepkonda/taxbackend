@@ -10,5 +10,11 @@ public enum ClientStatus {
     CALL_BACK,
     DOCUMENTS_PENDING,
     DOCUMENTS_RECEIVED,
+
+    PREPARATION_ASSIGNED,
+    PREPARATION_IN_PROGRESS,
+    DRAFT_READY,       // Prep team uploaded a draft
+    DRAFT_REJECTED,    // Admin wants changes (Draft 2 needed)
+    DRAFT_APPROVED,
     COMPLETED
 }

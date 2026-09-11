@@ -150,8 +150,8 @@ public class EmployeeClientService {
 
         return digits.substring(0, 4)
                 + "*".repeat(
-                        digits.length() - 4
-                );
+                digits.length() - 4
+        );
     }
 
 
@@ -183,11 +183,11 @@ public class EmployeeClientService {
         }
 
         return "*".repeat(
-                    username.length() - 4
-                )
+                username.length() - 4
+        )
                 + username.substring(
-                    username.length() - 4
-                )
+                username.length() - 4
+        )
                 + domain;
     }
 }

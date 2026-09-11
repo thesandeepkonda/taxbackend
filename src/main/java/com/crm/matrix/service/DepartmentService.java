@@ -5,6 +5,8 @@ import com.crm.matrix.dto.DepartmentResponse;
 import com.crm.matrix.entity.Department;
 import com.crm.matrix.repository.DepartmentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,7 +17,6 @@ import java.util.List;
 public class DepartmentService {
 
     private final DepartmentRepository departmentRepository;
-
 
 
     @Transactional
@@ -46,13 +47,11 @@ public class DepartmentService {
     }
 
 
-
     @Transactional(readOnly = true)
     public List<DepartmentResponse> getAllDepartments() {
 
         return departmentRepository.findAll().stream().map(this::mapToResponse).toList();
     }
-
 
 
     @Transactional(readOnly = true)
@@ -62,7 +61,6 @@ public class DepartmentService {
 
         return mapToResponse(department);
     }
-
 
 
     @Transactional
@@ -97,7 +95,6 @@ public class DepartmentService {
     }
 
 
-
     @Transactional
     public void deactivateDepartment(Long id) {
 
@@ -120,10 +117,15 @@ public class DepartmentService {
     }
 
 
-
-
     private DepartmentResponse mapToResponse(Department department) {
 
         return DepartmentResponse.builder().id(department.getId()).name(department.getName()).description(department.getDescription()).active(department.getActive()).build();
+    }
+
+
+    @Transactional(readOnly = true)
+    public Page<DepartmentResponse> getDepartmentsByStatus(boolean active, Pageable pageable) {
+        return departmentRepository.findByActive(active, pageable)
+                .map(this::mapToResponse);
     }
 }

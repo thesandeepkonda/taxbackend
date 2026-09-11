@@ -1,8 +1,10 @@
 package com.crm.matrix.entity;
 
+import com.crm.matrix.enums.DocumentStatus;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -10,56 +12,91 @@ import java.time.LocalDateTime;
 @Table(
         name = "client_documents",
         indexes = {
-                @Index(name = "idx_document_request", columnList = "request_id"),
-                @Index(name = "idx_document_client", columnList = "client_id")
+                @Index(
+                        name = "idx_document_request",
+                        columnList = "request_id"
+                ),
+                @Index(
+                        name = "idx_document_client",
+                        columnList = "client_id"
+                ),
+                @Index(
+                        name = "idx_document_status",
+                        columnList = "status"
+                )
         }
 )
 @Getter
 @Setter
-public class ClientDocument extends BaseEntity {
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ClientDocument {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Document request
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "request_id", nullable = false)
+    @JoinColumn(
+            name = "request_id",
+            nullable = false
+    )
     private DocumentRequest request;
 
-    // Client
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "client_id", nullable = false)
+    @JoinColumn(
+            name = "client_id",
+            nullable = false
+    )
     private Client client;
 
-    // Example: PAN, Aadhaar, GST Certificate
-    @Column(name = "document_type", nullable = false, length = 100)
+    @Column(name = "document_type", nullable = false)
     private String documentType;
 
-    @Column(name = "document_name", nullable = false, length = 255)
-    private String documentName;
-
-    @Column(name = "file_name", length = 500)
+    @Column(name = "file_name")
     private String fileName;
 
-    @Column(name = "file_path", length = 1000)
+    @Column(name = "file_path")
     private String filePath;
 
-    @Column(name = "content_type", length = 100)
+    @Column(name = "content_type")
     private String contentType;
 
     @Column(name = "file_size")
     private Long fileSize;
 
-    @Column(nullable = false)
-    private Boolean uploaded = true;
+
+
+    @CreationTimestamp
+    @Column(
+            name = "created_at",
+            nullable = false,
+            updatable = false
+    )
+    private LocalDateTime createdAt;
 
     @Column(name = "uploaded_at")
     private LocalDateTime uploadedAt;
 
-    @Column(name = "verified", nullable = false)
-    private Boolean verified = false;
+    @UpdateTimestamp
+    @Column(
+            name = "updated_at",
+            nullable = false
+    )
+    private LocalDateTime updatedAt;
 
-    @Column(name = "remarks", length = 500)
-    private String remarks;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private DocumentStatus status;
+
+    @Column(name = "review_comment", length = 1000)
+    private String reviewComment;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reviewed_by")
+    private User reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
 }

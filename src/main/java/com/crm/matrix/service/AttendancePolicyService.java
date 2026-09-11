@@ -36,6 +36,7 @@ public class AttendancePolicyService {
         policy.setStartTime(startTime);
         policy.setEndTime(endTime);
         policy.setAllowedBreakMinutes(request.getAllowedBreakMinutes());
+        policy.setWorkingDays(request.getWorkingDays().trim());
         policy.setActive(true);
 
         AttendancePolicy savedPolicy = attendancePolicyRepository.save(policy);
@@ -77,6 +78,7 @@ public class AttendancePolicyService {
                 .startTime(policy.getStartTime())
                 .endTime(policy.getEndTime())
                 .allowedBreakMinutes(policy.getAllowedBreakMinutes())
+                .workingDays(policy.getWorkingDays())
                 .active(policy.getActive())
                 .build();
     }

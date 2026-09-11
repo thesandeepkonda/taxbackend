@@ -16,6 +16,7 @@ public class AttendanceResponse {
     private Long employeeId;
 
     private String employeeCode;
+    private String employeeName;
 
     private LocalDate attendanceDate;
 

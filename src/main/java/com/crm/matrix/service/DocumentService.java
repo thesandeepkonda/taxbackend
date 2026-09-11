@@ -1,9 +1,17 @@
-
 package com.crm.matrix.service;
 
-import com.crm.matrix.dto.*;
-import com.crm.matrix.entity.*;
-import com.crm.matrix.repository.*;
+import com.crm.matrix.dto.CreateDocumentRequestDto;
+import com.crm.matrix.dto.DocumentRequestResponseDto;
+import com.crm.matrix.dto.DocumentResponseDto;
+import com.crm.matrix.entity.Client;
+import com.crm.matrix.entity.ClientDocument;
+import com.crm.matrix.entity.DocumentRequest;
+import com.crm.matrix.entity.User;
+import com.crm.matrix.enums.DocumentStatus;
+import com.crm.matrix.repository.ClientDocumentRepository;
+import com.crm.matrix.repository.ClientRepository;
+import com.crm.matrix.repository.DocumentRequestRepository;
+import com.crm.matrix.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -13,153 +21,86 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.net.MalformedURLException;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
+
 public class DocumentService {
 
     private final ClientRepository clientRepository;
     private final UserRepository userRepository;
     private final DocumentRequestRepository requestRepository;
     private final ClientDocumentRepository documentRepository;
+    private final NotificationService notificationService;
 
-    /*
-     * Files are stored outside the public/static folder.
-     *
-     * DO NOT put these files inside:
-     * src/main/resources/static
-     * src/main/resources/public
-     *
-     * Otherwise anybody could access them directly.
-     */
-    private final Path uploadDirectory =
-            Paths.get("uploads/documents");
+    private final Path uploadDirectory = Paths.get("uploads/documents");
 
 
     // =========================================================
     // GET LOGGED-IN EMPLOYEE
     // =========================================================
 
-    private User getLoggedInUser(
-            Authentication authentication) {
+    private User getLoggedInUser(Authentication authentication) {
 
         if (authentication == null) {
-            throw new RuntimeException(
-                    "Authentication required"
-            );
+            throw new RuntimeException("Authentication required");
         }
 
-        return userRepository
-                .findByEmployeeCode(authentication.getName())
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "Logged-in user not found"
-                        ));
+        return userRepository.findByEmployeeCode(authentication.getName()).orElseThrow(() -> new RuntimeException("Logged-in user not found"));
     }
 
 
     // =========================================================
-    // 1. DOC EMPLOYEE CREATES DOCUMENT REQUEST
+    // 1. CREATE DOCUMENT REQUEST
     // =========================================================
 
-    public DocumentRequestResponseDto createRequest(
-            CreateDocumentRequestDto dto,
-            Authentication authentication) {
+    @Transactional
+    public DocumentRequestResponseDto createRequest(CreateDocumentRequestDto dto, Authentication authentication) {
 
-        User employee =
-                getLoggedInUser(authentication);
+        User employee = getLoggedInUser(authentication);
 
-        Client client =
-                clientRepository
-                        .findById(dto.getClientId())
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Client not found"
-                                ));
+        Client client = clientRepository.findById(dto.getClientId()).orElseThrow(() -> new RuntimeException("Client not found"));
 
 
-        DocumentRequest request =
-                new DocumentRequest();
+        DocumentRequest request = new DocumentRequest();
 
         request.setClient(client);
-
         request.setEmployee(employee);
 
-        /*
-         * Random token.
-         *
-         * Example:
-         * https://yourdomain.com/document-upload/8f7a...
-         */
-        request.setShareToken(
-                UUID.randomUUID()
-                        .toString()
-                        .replace("-", "")
-        );
+        request.setShareToken(UUID.randomUUID().toString().replace("-", ""));
 
-        request.setExpiresAt(
-                dto.getExpiresAt()
-        );
+        request.setExpiresAt(dto.getExpiresAt());
 
         request.setActive(true);
-
         request.setSubmitted(false);
 
-
-        request =
-                requestRepository.save(request);
+        request = requestRepository.save(request);
 
 
         // =====================================================
-        // CREATE REQUIRED DOCUMENT SLOTS
+        // CREATE DOCUMENT SLOTS
         // =====================================================
 
         if (dto.getDocumentTypes() != null) {
 
-            for (String type :
-                    dto.getDocumentTypes()) {
+            for (String type : dto.getDocumentTypes()) {
 
-                if (type == null ||
-                        type.isBlank()) {
+                if (type == null || type.isBlank()) {
                     continue;
                 }
 
-                ClientDocument document =
-                        new ClientDocument();
-
-                document.setRequest(request);
-
-                document.setClient(client);
-
-                document.setDocumentType(
-                        type.trim()
-                );
-
-                document.setDocumentName(
-                        type.trim()
-                );
-
-                document.setUploaded(false);
-
-                document.setVerified(false);
-
-                /*
-                 * Do not use null if your DB/DTO does not
-                 * handle it properly.
-                 */
-                document.setFileName(null);
-
-                document.setFilePath(null);
+                ClientDocument document = ClientDocument.builder().request(request).client(client).documentType(type.trim()).fileName(null).filePath(null).contentType(null).fileSize(null).status(DocumentStatus.PENDING).build();
 
                 documentRepository.save(document);
             }
         }
-
 
         return mapRequest(request);
     }
@@ -170,277 +111,123 @@ public class DocumentService {
     // =========================================================
 
     @Transactional(readOnly = true)
-    public DocumentRequestResponseDto getPublicRequest(
-            String token) {
+    public DocumentRequestResponseDto getPublicRequest(String token) {
 
-        if (token == null || token.isBlank()) {
-            throw new RuntimeException("Document link token is required");
-        }
+        DocumentRequest request = getValidRequest(token);
 
-        DocumentRequest request =
-                requestRepository
-                        .findByShareTokenAndActiveTrue(token)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Invalid document link"
-                                ));
-
-        if (request.getExpiresAt() != null &&
-                request.getExpiresAt()
-                        .isBefore(LocalDateTime.now())) {
-
-            throw new RuntimeException(
-                    "Document link has expired"
-            );
-        }
-
-        return mapPublicRequest(request);
-    }
-
-    private DocumentRequestResponseDto mapPublicRequest(
-            DocumentRequest request) {
-
-        List<ClientDocument> documents =
-                documentRepository
-                        .findByRequestOrderByCreatedAtDesc(
-                                request
-                        );
-
-        return DocumentRequestResponseDto
-                .builder()
-                .requestId(request.getId())
-                .clientId(request.getClient().getId())
-                .clientName(request.getClient().getName())
-                .shareToken(request.getShareToken())
-                .shareUrl(
-                        "/api/documents/public/"
-                                + request.getShareToken()
-                )
-                .active(request.getActive())
-                .submitted(request.getSubmitted())
-                .expiresAt(request.getExpiresAt())
-                .documents(
-                        documents.stream()
-                                .map(this::mapDocument)
-                                .toList()
-                )
-                .build();
+        return mapRequest(request);
     }
 
 
     // =========================================================
     // 3. CLIENT UPLOADS DOCUMENT
     // =========================================================
+    public DocumentResponseDto uploadDocument(String token, Long documentId, MultipartFile file) {
 
-    public DocumentResponseDto uploadDocument(
-            String token,
-            Long documentId,
-            MultipartFile file) {
-
-        if (file == null ||
-                file.isEmpty()) {
-
-            throw new RuntimeException(
-                    "File is empty"
-            );
+        if (file == null || file.isEmpty()) {
+            throw new RuntimeException("File is empty");
         }
 
+        // STEP 1: Transactional Read & Validation (Fast)
+        Long clientId = validateAndGetClientId(token, documentId);
 
-        DocumentRequest request =
-                getValidRequest(token);
+        // STEP 2: Non-Transactional Disk I/O (Slow, but DB connection is safe in the pool!)
+        Path savedFilePath = saveFileToDisk(clientId, file);
 
+        // STEP 3: Transactional Write (Fast)
+        return finalizeDocumentRecord(documentId, file, savedFilePath);
+    }
 
-        ClientDocument document =
-                documentRepository
-                        .findById(documentId)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Document not found"
-                                ));
+    @Transactional(readOnly = true)
+    protected Long validateAndGetClientId(String token, Long documentId) {
+        DocumentRequest request = getValidRequest(token);
+        ClientDocument document = documentRepository.findById(documentId).orElseThrow(() -> new RuntimeException("Document not found"));
 
-
-        // =====================================================
-        // SECURITY CHECK
-        // =====================================================
-
-        /*
-         * The document MUST belong to the request represented
-         * by the share token.
-         */
-        if (document.getRequest() == null ||
-                !document.getRequest()
-                        .getId()
-                        .equals(request.getId())) {
-
-            throw new RuntimeException(
-                    "You are not allowed to upload this document"
-            );
+        if (document.getClient() == null || request.getClient() == null || !document.getClient().getId().equals(request.getClient().getId())) {
+            throw new RuntimeException("You are not allowed to upload this document");
         }
 
+        // This safely triggers any lazy loading required and returns the ID we need for the folder path
+        return request.getClient().getId();
+    }
 
+    // --- HELPER 2: FILE I/O ---
+    private Path saveFileToDisk(Long clientId, MultipartFile file) {
         try {
+            Files.createDirectories(uploadDirectory);
+            Path clientDirectory = uploadDirectory.resolve(String.valueOf(clientId));
+            Files.createDirectories(clientDirectory);
 
-            Files.createDirectories(
-                    uploadDirectory
-            );
-
-
-            // =================================================
-            // CLIENT DIRECTORY
-            // =================================================
-
-            Path clientDirectory =
-                    uploadDirectory
-                            .resolve(
-                                    String.valueOf(
-                                            request
-                                                    .getClient()
-                                                    .getId()
-                                    )
-                            );
-
-
-            Files.createDirectories(
-                    clientDirectory
-            );
-
-
-            // =================================================
-            // GENERATE SAFE FILE NAME
-            // =================================================
-
-            String originalName =
-                    file.getOriginalFilename();
-
+            String originalName = file.getOriginalFilename();
             String extension = "";
-
-            if (originalName != null &&
-                    originalName.contains(".")) {
-
-                extension =
-                        originalName.substring(
-                                originalName.lastIndexOf(".")
-                        );
+            if (originalName != null && originalName.contains(".")) {
+                extension = originalName.substring(originalName.lastIndexOf("."));
             }
 
+            String storedName = UUID.randomUUID() + extension;
+            Path filePath = clientDirectory.resolve(storedName);
 
-            String storedName =
-                    UUID.randomUUID()
-                            + extension;
-
-
-            Path filePath =
-                    clientDirectory
-                            .resolve(storedName);
-
-
-            // =================================================
-            // SAVE FILE
-            // =================================================
-
-            Files.copy(
-                    file.getInputStream(),
-                    filePath,
-                    StandardCopyOption.REPLACE_EXISTING
-            );
-
-
-            // =================================================
-            // UPDATE DATABASE
-            // =================================================
-
-            document.setFileName(
-                    originalName
-            );
-
-            document.setFilePath(
-                    filePath.toAbsolutePath()
-                            .toString()
-            );
-
-            document.setContentType(
-                    file.getContentType()
-            );
-
-            document.setFileSize(
-                    file.getSize()
-            );
-
-            document.setUploaded(true);
-
-            document.setUploadedAt(
-                    LocalDateTime.now()
-            );
-
-
-            documentRepository.save(document);
-
-
-            return mapDocument(document);
-
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+            return filePath;
 
         } catch (Exception e) {
-
-            throw new RuntimeException(
-                    "Unable to upload document",
-                    e
-            );
+            throw new RuntimeException("Unable to upload document", e);
         }
     }
 
+    // --- HELPER 3: DATABASE UPDATE ---
+    @Transactional
+    protected DocumentResponseDto finalizeDocumentRecord(Long documentId, MultipartFile file, Path filePath) {
+        ClientDocument document = documentRepository.findById(documentId).orElseThrow(() -> new RuntimeException("Document not found"));
+
+        document.setFileName(file.getOriginalFilename());
+        document.setFilePath(filePath.toAbsolutePath().toString());
+        document.setContentType(file.getContentType());
+        document.setFileSize(file.getSize());
+        document.setStatus(DocumentStatus.SUBMITTED);
+        document.setUploadedAt(LocalDateTime.now());
+        document.setUpdatedAt(LocalDateTime.now());
+
+        documentRepository.save(document);
+        return mapDocument(document);
+    }
 
     // =========================================================
     // 4. CLIENT SUBMITS ALL DOCUMENTS
     // =========================================================
 
-    public DocumentRequestResponseDto submitDocuments(
-            String token) {
+    @Transactional
+    public DocumentRequestResponseDto submitDocuments(String token) {
 
-        DocumentRequest request =
-                getValidRequest(token);
+        DocumentRequest request = getValidRequest(token);
 
 
-        List<ClientDocument> documents =
-                documentRepository
-                        .findByRequestOrderByCreatedAtDesc(
-                                request
-                        );
+        List<ClientDocument> documents = documentRepository.findByRequestOrderByUpdatedAtDesc(request);
 
 
         if (documents.isEmpty()) {
 
-            throw new RuntimeException(
-                    "No documents were requested"
-            );
+            throw new RuntimeException("No documents were requested");
         }
 
 
-        boolean allUploaded =
-                documents.stream()
-                        .allMatch(
-                                d -> Boolean.TRUE.equals(
-                                        d.getUploaded()
-                                )
-                        );
+        boolean allSubmitted = documents.stream().allMatch(d -> d.getStatus() == DocumentStatus.SUBMITTED || d.getStatus() == DocumentStatus.VERIFIED);
 
 
-        if (!allUploaded) {
+        if (!allSubmitted) {
 
-            throw new RuntimeException(
-                    "Please upload all required documents"
-            );
+            throw new RuntimeException("Please upload all required documents");
         }
 
 
         request.setSubmitted(true);
 
-        request.setSubmittedAt(
-                LocalDateTime.now()
-        );
+        request.setSubmittedAt(LocalDateTime.now());
 
 
         requestRepository.save(request);
 
+        notificationService.sendNotification(request.getEmployee(), "Documents Submitted", "Client " + request.getClient().getName() + " has submitted all requested documents.", "DOCUMENT_SUBMITTED","/clients");
 
         return mapRequest(request);
     }
@@ -451,20 +238,12 @@ public class DocumentService {
     // =========================================================
 
     @Transactional(readOnly = true)
-    public List<DocumentRequestResponseDto> getMyRequests(
-            Authentication authentication) {
+    public List<DocumentRequestResponseDto> getMyRequests(Authentication authentication) {
 
-        User employee =
-                getLoggedInUser(authentication);
+        User employee = getLoggedInUser(authentication);
 
 
-        return requestRepository
-                .findByEmployeeAndActiveTrueOrderByCreatedAtDesc(
-                        employee
-                )
-                .stream()
-                .map(this::mapRequest)
-                .toList();
+        return requestRepository.findByEmployeeAndActiveTrueOrderByCreatedAtDesc(employee).stream().map(this::mapRequest).toList();
     }
 
 
@@ -473,24 +252,12 @@ public class DocumentService {
     // =========================================================
 
     @Transactional(readOnly = true)
-    public DocumentRequestResponseDto getMyRequest(
-            Long requestId,
-            Authentication authentication) {
+    public DocumentRequestResponseDto getMyRequest(Long requestId, Authentication authentication) {
 
-        User employee =
-                getLoggedInUser(authentication);
+        User employee = getLoggedInUser(authentication);
 
 
-        DocumentRequest request =
-                requestRepository
-                        .findByIdAndEmployee(
-                                requestId,
-                                employee
-                        )
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Document request not found"
-                                ));
+        DocumentRequest request = requestRepository.findByIdAndEmployee(requestId, employee).orElseThrow(() -> new RuntimeException("Document request not found"));
 
 
         return mapRequest(request);
@@ -502,24 +269,14 @@ public class DocumentService {
     // =========================================================
 
     @Transactional(readOnly = true)
-    public Resource getDocumentForAdmin(
-            Long documentId) {
+    public Resource getDocumentForAdmin(Long documentId) {
 
-        ClientDocument document =
-                documentRepository
-                        .findById(documentId)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Document not found"
-                                ));
+        ClientDocument document = documentRepository.findById(documentId).orElseThrow(() -> new RuntimeException("Document not found"));
 
 
-        if (!Boolean.TRUE.equals(
-                document.getUploaded())) {
+        if (document.getStatus() == DocumentStatus.PENDING) {
 
-            throw new RuntimeException(
-                    "Document has not been uploaded"
-            );
+            throw new RuntimeException("Document has not been uploaded");
         }
 
 
@@ -531,56 +288,28 @@ public class DocumentService {
     // 8. CLIENT VIEW OWN DOCUMENT
     // =========================================================
 
-    /*
-     * IMPORTANT:
-     *
-     * Client does NOT need login.
-     *
-     * The share token acts as the authorization.
-     *
-     * The client can only access a document if:
-     *
-     * document.request.id == token.request.id
-     */
     @Transactional(readOnly = true)
-    public Resource getClientDocument(
-            String token,
-            Long documentId) {
+    public Resource getClientDocument(String token, Long documentId) {
 
-        DocumentRequest request =
-                getValidRequest(token);
+        DocumentRequest request = getValidRequest(token);
 
 
-        ClientDocument document =
-                documentRepository
-                        .findById(documentId)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Document not found"
-                                ));
+        ClientDocument document = documentRepository.findById(documentId).orElseThrow(() -> new RuntimeException("Document not found"));
 
 
         // =====================================================
-        // VERY IMPORTANT SECURITY CHECK
+        // SECURITY CHECK
         // =====================================================
 
-        if (document.getRequest() == null ||
-                !document.getRequest()
-                        .getId()
-                        .equals(request.getId())) {
+        if (document.getClient() == null || !document.getClient().getId().equals(request.getClient().getId())) {
 
-            throw new RuntimeException(
-                    "You are not allowed to view this document"
-            );
+            throw new RuntimeException("You are not allowed to view this document");
         }
 
 
-        if (!Boolean.TRUE.equals(
-                document.getUploaded())) {
+        if (document.getStatus() == DocumentStatus.PENDING) {
 
-            throw new RuntimeException(
-                    "Document has not been uploaded"
-            );
+            throw new RuntimeException("Document has not been uploaded");
         }
 
 
@@ -589,41 +318,23 @@ public class DocumentService {
 
 
     // =========================================================
-    // 9. GET VALID REQUEST FROM TOKEN
+    // 9. GET VALID REQUEST
     // =========================================================
 
-    private DocumentRequest getValidRequest(
-            String token) {
+    private DocumentRequest getValidRequest(String token) {
 
-        if (token == null ||
-                token.isBlank()) {
+        if (token == null || token.isBlank()) {
 
-            throw new RuntimeException(
-                    "Document token is required"
-            );
+            throw new RuntimeException("Document token is required");
         }
 
 
-        DocumentRequest request =
-                requestRepository
-                        .findByShareTokenAndActiveTrue(
-                                token
-                        )
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Invalid document link"
-                                ));
+        DocumentRequest request = requestRepository.findByShareTokenAndActiveTrue(token).orElseThrow(() -> new RuntimeException("Invalid document link"));
 
 
-        if (request.getExpiresAt() != null &&
-                request.getExpiresAt()
-                        .isBefore(
-                                LocalDateTime.now()
-                        )) {
+        if (request.getExpiresAt() != null && request.getExpiresAt().isBefore(LocalDateTime.now())) {
 
-            throw new RuntimeException(
-                    "Document link has expired"
-            );
+            throw new RuntimeException("Document link has expired");
         }
 
 
@@ -635,40 +346,25 @@ public class DocumentService {
     // 10. GET FILE
     // =========================================================
 
-    private Resource getFile(
-            ClientDocument document) {
+    private Resource getFile(ClientDocument document) {
 
         try {
 
-            if (document.getFilePath() == null ||
-                    document.getFilePath().isBlank()) {
+            if (document.getFilePath() == null || document.getFilePath().isBlank()) {
 
-                throw new RuntimeException(
-                        "File path not available"
-                );
+                throw new RuntimeException("File path not available");
             }
 
 
-            Path path =
-                    Paths.get(
-                                    document.getFilePath()
-                            )
-                            .toAbsolutePath()
-                            .normalize();
+            Path path = Paths.get(document.getFilePath()).toAbsolutePath().normalize();
 
 
-            Resource resource =
-                    new UrlResource(
-                            path.toUri()
-                    );
+            Resource resource = new UrlResource(path.toUri());
 
 
-            if (!resource.exists() ||
-                    !resource.isReadable()) {
+            if (!resource.exists() || !resource.isReadable()) {
 
-                throw new RuntimeException(
-                        "File not found"
-                );
+                throw new RuntimeException("File not found");
             }
 
 
@@ -677,10 +373,7 @@ public class DocumentService {
 
         } catch (MalformedURLException e) {
 
-            throw new RuntimeException(
-                    "Unable to read document",
-                    e
-            );
+            throw new RuntimeException("Unable to read document", e);
         }
     }
 
@@ -689,67 +382,30 @@ public class DocumentService {
     // 11. REQUEST MAPPER
     // =========================================================
 
-    private DocumentRequestResponseDto mapRequest(
-            DocumentRequest request) {
+    private DocumentRequestResponseDto mapRequest(DocumentRequest request) {
 
-        List<ClientDocument> documents =
-                documentRepository
-                        .findByRequestOrderByCreatedAtDesc(
-                                request
-                        );
+        List<ClientDocument> documents = documentRepository.findByRequestOrderByUpdatedAtDesc(request);
 
 
-        return DocumentRequestResponseDto
-                .builder()
+        return DocumentRequestResponseDto.builder()
 
-                .requestId(
-                        request.getId()
-                )
+                .requestId(request.getId())
 
-                .clientId(
-                        request.getClient()
-                                .getId()
-                )
+                .clientId(request.getClient().getId())
 
-                .clientName(
-                        request.getClient()
-                                .getName()
-                )
+                .clientName(request.getClient().getName())
 
-                .shareToken(
-                        request.getShareToken()
-                )
+                .shareToken(request.getShareToken())
 
-                /*
-                 * Frontend can append this token to your
-                 * frontend URL.
-                 *
-                 * Example:
-                 *
-                 * http://localhost:3000/document-upload/TOKEN
-                 */
-                .shareUrl(
-                        "/document-upload/"
-                                + request.getShareToken()
-                )
+                .shareUrl("/document-upload/" + request.getShareToken())
 
-                .active(
-                        request.getActive()
-                )
+                .active(request.getActive())
 
-                .submitted(
-                        request.getSubmitted()
-                )
+                .submitted(request.getSubmitted())
 
-                .expiresAt(
-                        request.getExpiresAt()
-                )
+                .expiresAt(request.getExpiresAt())
 
-                .documents(
-                        documents.stream()
-                                .map(this::mapDocument)
-                                .toList()
-                )
+                .documents(documents.stream().map(this::mapDocument).toList())
 
                 .build();
     }
@@ -759,62 +415,26 @@ public class DocumentService {
     // 12. DOCUMENT MAPPER
     // =========================================================
 
-    private DocumentResponseDto mapDocument(
-            ClientDocument document) {
+    private DocumentResponseDto mapDocument(ClientDocument document) {
 
-        /*
-         * NEVER return:
-         *
-         * filePath
-         *
-         * This prevents the DOC employee/frontend from
-         * knowing where the physical file is stored.
-         */
+        return DocumentResponseDto.builder()
 
-        return DocumentResponseDto
-                .builder()
+                .documentId(document.getId())
 
-                .documentId(
-                        document.getId()
-                )
+                .documentType(document.getDocumentType())
 
-                .documentType(
-                        document.getDocumentType()
-                )
+                .fileName(document.getFileName())
 
-                .documentName(
-                        document.getDocumentName()
-                )
+                .contentType(document.getContentType())
 
-                .fileName(
-                        document.getFileName()
-                )
+                .fileSize(document.getFileSize())
 
-                .contentType(
-                        document.getContentType()
-                )
+                .status(document.getStatus())
 
-                .fileSize(
-                        document.getFileSize()
-                )
-
-                .uploaded(
-                        document.getUploaded()
-                )
-
-                .verified(
-                        document.getVerified()
-                )
-
-                .remarks(
-                        document.getRemarks()
-                )
-
-                .uploadedAt(
-                        document.getUploadedAt()
-                )
+                .uploadedAt(document.getUploadedAt())
 
                 .build();
     }
-}
 
+
+}

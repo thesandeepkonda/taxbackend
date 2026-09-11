@@ -4,12 +4,17 @@ import com.crm.matrix.dto.CreateEmployeeResponse;
 import com.crm.matrix.dto.CreateTeamRequest;
 import com.crm.matrix.dto.TeamResponse;
 import com.crm.matrix.entity.Department;
+import com.crm.matrix.entity.Role;
 import com.crm.matrix.entity.Team;
 import com.crm.matrix.entity.User;
 import com.crm.matrix.repository.DepartmentRepository;
+import com.crm.matrix.repository.RoleRepository;
 import com.crm.matrix.repository.TeamRepository;
 import com.crm.matrix.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +27,8 @@ public class TeamService {
     private final TeamRepository teamRepository;
 
     private final DepartmentRepository departmentRepository;
-    private  final UserRepository userRepository;
+    private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
 
 
     @Transactional
@@ -174,72 +180,71 @@ public class TeamService {
 
     @Transactional(readOnly = true)
     public List<CreateEmployeeResponse> getUsersByTeam(Long teamId) {
-
-        // ---------------------------------------------------------
-        // VERIFY TEAM
-        // ---------------------------------------------------------
-
         Team team = teamRepository.findById(teamId).orElseThrow(() -> new IllegalArgumentException("Team not found: " + teamId));
 
-
-        // ---------------------------------------------------------
-        // GET ACTIVE USERS
-        // ---------------------------------------------------------
-
         List<User> users = userRepository.findByTeamIdAndActiveTrue(teamId);
-
-
-        // ---------------------------------------------------------
-        // MAP RESPONSE
-        // ---------------------------------------------------------
-
-        return users.stream().map(user -> CreateEmployeeResponse.builder()
-
-                .employeeCode(user.getEmployeeCode())
-
-                .firstName(user.getFirstName())
-
-                .lastName(user.getLastName())
-
-                .email(user.getEmail())
-
-                .phone(user.getPhone())
-
-                .departmentId(user.getDepartment() != null ? user.getDepartment().getId() : null)
-
-                .departmentName(user.getDepartment() != null ? user.getDepartment().getName() : null)
-
-                .teamId(user.getTeam() != null ? user.getTeam().getId() : null)
-
-                .teamName(user.getTeam() != null ? user.getTeam().getName() : null)
-
-                .roleId(user.getRole() != null ? user.getRole().getId() : null)
-
-                .roleName(user.getRole() != null ? user.getRole().getName() : null)
-
-                .active(user.getActive())
-
-                .build()).toList();
+        return users.stream().map(user -> CreateEmployeeResponse.builder().employeeCode(user.getEmployeeCode()).id(user.getId()).firstName(user.getFirstName()).lastName(user.getLastName()).email(user.getEmail()).phone(user.getPhone()).departmentId(user.getDepartment() != null ? user.getDepartment().getId() : null).departmentName(user.getDepartment() != null ? user.getDepartment().getName() : null).teamId(user.getTeam() != null ? user.getTeam().getId() : null).teamName(user.getTeam() != null ? user.getTeam().getName() : null).roleId(user.getRole() != null ? user.getRole().getId() : null).roleName(user.getRole() != null ? user.getRole().getName() : null).active(user.getActive()).build()).toList();
     }
 
     @Transactional
-    public TeamResponse assignTeamLead(Long teamId, Long employeeId) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("Team not found: " + teamId));
+    public TeamResponse assignTeamLead(Long teamId, Long employeeId, boolean override) {
+        Team team = teamRepository.findById(teamId).orElseThrow(() -> new IllegalArgumentException("Team not found: " + teamId));
 
-        User employee = userRepository.findById(employeeId)
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found: " + employeeId));
+        User newLead = userRepository.findById(employeeId).orElseThrow(() -> new IllegalArgumentException("Employee not found: " + employeeId));
 
-        if (employee.getDepartment() == null || !employee.getDepartment().getId().equals(team.getDepartment().getId())) {
+        if (newLead.getDepartment() == null || !newLead.getDepartment().getId().equals(team.getDepartment().getId())) {
             throw new IllegalArgumentException("Team lead must belong to the team's department");
         }
 
-        employee.setTeam(team);
-        userRepository.save(employee);
+        Role employeeRole = roleRepository.findByNameIgnoreCase("EMPLOYEE").orElseThrow(() -> new IllegalStateException("EMPLOYEE role not found in the database"));
 
-        team.setTeamLead(employee);
+        Role teamLeadRole = roleRepository.findByNameIgnoreCase("TEAM_LEAD").orElseThrow(() -> new IllegalStateException("TEAM_LEAD role not found in the database"));
+
+        if (team.getTeamLead() != null && !team.getTeamLead().getId().equals(newLead.getId())) {
+            if (!override) {
+                throw new IllegalStateException("Team already has a team lead assigned. Please confirm override to replace them.");
+            } else {
+                User oldLead = team.getTeamLead();
+                oldLead.setRole(employeeRole);
+                userRepository.save(oldLead);
+                team.setTeamLead(null);
+                teamRepository.saveAndFlush(team);
+            }
+        }
+
+        newLead.setRole(teamLeadRole);
+        newLead.setTeam(team);
+        userRepository.save(newLead);
+
+        team.setTeamLead(newLead);
         Team savedTeam = teamRepository.save(team);
 
         return mapToResponse(savedTeam);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TeamResponse> getTeamsByStatus(boolean active, Pageable pageable) {
+        return teamRepository.findByActive(active, pageable)
+                .map(this::mapToResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CreateEmployeeResponse> getMyTeamUsers(Authentication authentication) {
+        User loggedInUser = userRepository.findByEmployeeCode(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("Logged-in user not found"));
+
+        if (loggedInUser.getTeam() == null) {
+            throw new RuntimeException("You are not assigned to any team");
+        }
+
+        // Identify the Team Lead's ID so we can filter them out
+        Long teamLeadId = (loggedInUser.getTeam().getTeamLead() != null)
+                ? loggedInUser.getTeam().getTeamLead().getId()
+                : null;
+
+        // Fetch all team members, then filter out the Team Lead
+        return getUsersByTeam(loggedInUser.getTeam().getId()).stream()
+                .filter(employee -> !employee.getId().equals(teamLeadId))
+                .toList();
     }
 }

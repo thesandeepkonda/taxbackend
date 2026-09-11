@@ -22,4 +22,6 @@ public class CreateAttendancePolicyRequest {
     @NotNull(message = "Allowed break minutes is required")
     @Min(value = 0, message = "Allowed break minutes cannot be negative")
     private Integer allowedBreakMinutes;
+    @NotBlank(message = "Working days are required (e.g., 'Mon - Fri')")
+    private String workingDays;
 }

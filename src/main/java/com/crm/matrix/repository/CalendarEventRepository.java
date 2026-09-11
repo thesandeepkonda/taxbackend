@@ -1,0 +1,35 @@
+package com.crm.matrix.repository;
+
+import com.crm.matrix.entity.CalendarEvent;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import java.time.LocalDateTime;
+import java.util.List;
+
+public interface CalendarEventRepository extends JpaRepository<CalendarEvent, Long> {
+
+    @Query("""
+        SELECT e FROM CalendarEvent e
+        JOIN FETCH e.createdBy
+        WHERE e.startTime <= :toDate AND e.endTime >= :fromDate
+        AND (
+            e.targetType = com.crm.matrix.enums.EventTargetType.ALL
+            OR (e.targetType = com.crm.matrix.enums.EventTargetType.INDIVIDUAL AND e.targetId = :userId)
+            OR (e.targetType = com.crm.matrix.enums.EventTargetType.TEAM AND e.targetId = :teamId)
+            OR (e.targetType = com.crm.matrix.enums.EventTargetType.DEPARTMENT AND e.targetId = :departmentId)
+        )
+        ORDER BY e.startTime ASC
+    """)
+    List<CalendarEvent> findEventsForUserInRange(
+            @Param("userId") Long userId,
+            @Param("teamId") Long teamId,
+            @Param("departmentId") Long departmentId,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate
+    );
+
+    List<CalendarEvent> findAllByOrderByStartTimeDesc();
+
+    List<CalendarEvent> findAllByOrderByStartTimeAsc();
+}

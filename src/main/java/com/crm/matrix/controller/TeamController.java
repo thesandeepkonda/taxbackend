@@ -1,5 +1,6 @@
 package com.crm.matrix.controller;
 
+
 import com.crm.matrix.dto.CreateEmployeeResponse;
 import com.crm.matrix.dto.CreateTeamRequest;
 import com.crm.matrix.dto.TeamLeadResponseDto;
@@ -8,8 +9,12 @@ import com.crm.matrix.security.HasPermission;
 import com.crm.matrix.service.TeamService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -87,14 +92,31 @@ public class TeamController {
 
         return ResponseEntity.ok(teamService.getUsersByTeam(teamId));
     }
+    @GetMapping("/my-team/users")
+    public ResponseEntity<List<CreateEmployeeResponse>> getMyTeamUsers(Authentication authentication) {
+        return ResponseEntity.ok(teamService.getMyTeamUsers(authentication));
+    }
 
 
 
     @HasPermission("TEAM_UPDATE")
-    @PatchMapping("/teams/{teamId}/assign-lead/{employeeId}")
+    @PatchMapping("/{teamId}/assign-lead/{employeeId}")
     public ResponseEntity<TeamResponse> assignTeamLead(
             @PathVariable Long teamId,
-            @PathVariable Long employeeId) {
-        return ResponseEntity.ok(teamService.assignTeamLead(teamId, employeeId));
+            @PathVariable Long employeeId,
+            @RequestParam(defaultValue = "false") boolean override) { // Added override parameter
+
+        return ResponseEntity.ok(teamService.assignTeamLead(teamId, employeeId, override));
+    }
+
+
+    @HasPermission("TEAM_READ")
+    @GetMapping("/status")
+    public ResponseEntity<Page<TeamResponse>> getTeamsByStatus(
+            @RequestParam boolean active,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(teamService.getTeamsByStatus(active, pageable));
     }
 }

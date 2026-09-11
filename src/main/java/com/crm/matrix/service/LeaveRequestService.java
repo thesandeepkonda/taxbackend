@@ -23,18 +23,11 @@ public class LeaveRequestService {
     private final LeaveRequestRepository leaveRequestRepository;
 
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
-
-    // =========================================================
-    // EMPLOYEE - CREATE LEAVE REQUEST
-    // =========================================================
 
     @Transactional
     public LeaveRequestResponse createLeaveRequest(String employeeCode, CreateLeaveRequest request) {
-
-        // -----------------------------------------------------
-        // FIND EMPLOYEE FROM JWT
-        // -----------------------------------------------------
 
         User employee = getActiveEmployee(employeeCode);
 
@@ -44,33 +37,17 @@ public class LeaveRequestService {
         LocalDate toDate = request.getToDate();
 
 
-        // -----------------------------------------------------
-        // DATE VALIDATION
-        // -----------------------------------------------------
-
         if (toDate.isBefore(fromDate)) {
 
             throw new IllegalArgumentException("To date cannot be before from date");
         }
 
 
-        // -----------------------------------------------------
-        // CHECK PENDING OVERLAP
-        // -----------------------------------------------------
-
         boolean pendingOverlap = leaveRequestRepository.existsByUserIdAndStatusAndFromDateLessThanEqualAndToDateGreaterThanEqual(employee.getId(), LeaveRequestStatus.PENDING, toDate, fromDate);
-
-
         if (pendingOverlap) {
 
             throw new IllegalStateException("Employee already has a pending leave request for the selected dates");
         }
-
-
-        // -----------------------------------------------------
-        // CHECK APPROVED OVERLAP
-        // -----------------------------------------------------
-
         boolean approvedOverlap = leaveRequestRepository.existsByUserIdAndStatusAndFromDateLessThanEqualAndToDateGreaterThanEqual(employee.getId(), LeaveRequestStatus.APPROVED, toDate, fromDate);
 
 
@@ -78,80 +55,47 @@ public class LeaveRequestService {
 
             throw new IllegalStateException("Employee already has approved leave for the selected dates");
         }
-
-
-        // -----------------------------------------------------
-        // CREATE LEAVE
-        // -----------------------------------------------------
-
         LeaveRequest leaveRequest = new LeaveRequest();
-
-
         leaveRequest.setUser(employee);
-
-
         leaveRequest.setLeaveType(request.getLeaveType());
-
-
         leaveRequest.setFromDate(fromDate);
-
-
         leaveRequest.setToDate(toDate);
-
-
         leaveRequest.setDescription(request.getDescription());
-
-
-        // -----------------------------------------------------
-        // INITIAL STATUS
-        // -----------------------------------------------------
-
         leaveRequest.setStatus(LeaveRequestStatus.PENDING);
-
-
-        // -----------------------------------------------------
-        // APPLICATION TIME
-        // SERVER CONTROLLED
-        // -----------------------------------------------------
-
         leaveRequest.setAppliedAt(LocalDateTime.now());
-
-
-        // -----------------------------------------------------
-        // ADMIN FIELDS
-        // -----------------------------------------------------
-
         leaveRequest.setAdminRemark(null);
-
         leaveRequest.setProcessedBy(null);
-
         leaveRequest.setProcessedAt(null);
-
-
         LeaveRequest saved = leaveRequestRepository.save(leaveRequest);
+        String notifyTitle = "New Leave Request";
+        String notifyMessage = employee.getFirstName() + " has requested " + request.getLeaveType() + " leave from " + fromDate + " to " + toDate + ".";
 
+        // Notify all active Admins ONLY
+        List<User> admins = userRepository.findByRoleNameAndActiveTrue("ADMIN");
+        for (User admin : admins) {
+            // Prevent self-notification if the person requesting IS an Admin
+            if (admin.getId().equals(employee.getId())) {
+                continue;
+            }
 
+            notificationService.sendNotification(
+                    admin,
+                    notifyTitle,
+                    notifyMessage,
+                    "LEAVE_REQUESTED",
+                    "/admin/leave-approvals"
+            );
+        }
         return mapToResponse(saved);
     }
-
-
-    // =========================================================
-    // EMPLOYEE - GET MY REQUESTS
-    // =========================================================
 
     @Transactional(readOnly = true)
     public List<LeaveRequestResponse> getMyLeaveRequests(String employeeCode) {
 
         User employee = getActiveEmployee(employeeCode);
-
-
         return leaveRequestRepository.findByUserIdOrderByFromDateDesc(employee.getId()).stream().map(this::mapToResponse).toList();
     }
 
-
-    // =========================================================
-    // ADMIN - GET PENDING REQUESTS
-    // =========================================================
 
     @Transactional(readOnly = true)
     public List<LeaveRequestResponse> getPendingLeaveRequests() {
@@ -159,10 +103,6 @@ public class LeaveRequestService {
         return leaveRequestRepository.findByStatusOrderByFromDateAsc(LeaveRequestStatus.PENDING).stream().map(this::mapToResponse).toList();
     }
 
-
-    // =========================================================
-    // ADMIN - APPROVE
-    // =========================================================
 
     @Transactional
     public LeaveRequestResponse approveLeave(Long leaveId, String adminEmployeeCode, String adminRemark) {
@@ -172,20 +112,10 @@ public class LeaveRequestService {
 
         LeaveRequest leaveRequest = getLeaveRequest(leaveId);
 
-
-        // -----------------------------------------------------
-        // ONLY PENDING CAN BE APPROVED
-        // -----------------------------------------------------
-
         if (leaveRequest.getStatus() != LeaveRequestStatus.PENDING) {
 
             throw new IllegalStateException("Only pending leave requests can be approved");
         }
-
-
-        // -----------------------------------------------------
-        // CHECK APPROVED OVERLAP AGAIN
-        // -----------------------------------------------------
 
         boolean approvedOverlap = leaveRequestRepository.existsByUserIdAndStatusAndFromDateLessThanEqualAndToDateGreaterThanEqual(leaveRequest.getUser().getId(),
 
@@ -194,40 +124,24 @@ public class LeaveRequestService {
                 leaveRequest.getToDate(),
 
                 leaveRequest.getFromDate());
-
-
         if (approvedOverlap) {
-
             throw new IllegalStateException("Employee already has approved leave for the selected dates");
         }
-
-
-        // -----------------------------------------------------
-        // APPROVE
-        // -----------------------------------------------------
-
         leaveRequest.setStatus(LeaveRequestStatus.APPROVED);
-
-
         leaveRequest.setAdminRemark(adminRemark);
-
-
         leaveRequest.setProcessedBy(admin);
-
-
         leaveRequest.setProcessedAt(LocalDateTime.now());
-
-
         LeaveRequest saved = leaveRequestRepository.save(leaveRequest);
-
-
+        notificationService.sendNotification(
+                leaveRequest.getUser(),
+                "Leave Approved",
+                "Your " + leaveRequest.getLeaveType() + " leave request from " + leaveRequest.getFromDate() + " to " + leaveRequest.getToDate() + " has been approved.",
+                "LEAVE_APPROVED",
+                "/admin/leave-approvals"
+        );
         return mapToResponse(saved);
     }
 
-
-    // =========================================================
-    // ADMIN - REJECT
-    // =========================================================
 
     @Transactional
     public LeaveRequestResponse rejectLeave(Long leaveId, String adminEmployeeCode, String adminRemark) {
@@ -237,21 +151,10 @@ public class LeaveRequestService {
 
         LeaveRequest leaveRequest = getLeaveRequest(leaveId);
 
-
-        // -----------------------------------------------------
-        // ONLY PENDING CAN BE REJECTED
-        // -----------------------------------------------------
-
         if (leaveRequest.getStatus() != LeaveRequestStatus.PENDING) {
 
             throw new IllegalStateException("Only pending leave requests can be rejected");
         }
-
-
-        // -----------------------------------------------------
-        // REJECT
-        // -----------------------------------------------------
-
         leaveRequest.setStatus(LeaveRequestStatus.REJECTED);
 
 
@@ -265,25 +168,22 @@ public class LeaveRequestService {
 
 
         LeaveRequest saved = leaveRequestRepository.save(leaveRequest);
+        notificationService.sendNotification(
+                leaveRequest.getUser(),
+                "Leave Rejected",
+                "Your " + leaveRequest.getLeaveType() + " leave request from " + leaveRequest.getFromDate() + " to " + leaveRequest.getToDate() + " was rejected. Reason: " + adminRemark,
+                "LEAVE_REJECTED","/leave-approvals"
+        );
 
 
         return mapToResponse(saved);
     }
 
 
-    // =========================================================
-    // GET LEAVE BY ID
-    // =========================================================
-
     private LeaveRequest getLeaveRequest(Long leaveId) {
 
         return leaveRequestRepository.findById(leaveId).orElseThrow(() -> new IllegalArgumentException("Leave request not found: " + leaveId));
     }
-
-
-    // =========================================================
-    // GET ACTIVE EMPLOYEE
-    // =========================================================
 
     private User getActiveEmployee(String employeeCode) {
 
@@ -294,25 +194,13 @@ public class LeaveRequestService {
 
             throw new IllegalStateException("Employee is inactive");
         }
-
-
         return user;
     }
 
 
-    // =========================================================
-    // RESPONSE MAPPER
-    // =========================================================
-
     private LeaveRequestResponse mapToResponse(LeaveRequest leaveRequest) {
 
         User employee = leaveRequest.getUser();
-
-
-        // -----------------------------------------------------
-        // EMPLOYEE NAME
-        // -----------------------------------------------------
-
         String employeeName = employee.getFirstName();
 
 
@@ -320,11 +208,6 @@ public class LeaveRequestService {
 
             employeeName = employeeName + " " + employee.getLastName();
         }
-
-
-        // -----------------------------------------------------
-        // PROCESSED BY
-        // -----------------------------------------------------
 
         String processedByName = null;
 
@@ -339,19 +222,7 @@ public class LeaveRequestService {
                 processedByName = processedByName + " " + leaveRequest.getProcessedBy().getLastName();
             }
         }
-
-
-        // -----------------------------------------------------
-        // TOTAL DAYS
-        // -----------------------------------------------------
-
         long totalDays = ChronoUnit.DAYS.between(leaveRequest.getFromDate(), leaveRequest.getToDate()) + 1;
-
-
-        // -----------------------------------------------------
-        // RESPONSE
-        // -----------------------------------------------------
-
         return LeaveRequestResponse.builder()
 
                 .leaveId(leaveRequest.getId())

@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -13,22 +14,16 @@ import java.time.LocalDateTime;
 public class AdminClientResponseDto {
 
     private Long clientId;
-
     private String name;
-
     private String email;
-
     private String phone;
-
     private ClientStatus status;
 
     private String currentStage;
-
     private LocalDateTime nextFollowUpAt;
-
     private Long assignedEmployeeId;
-
     private String assignedEmployeeName;
-
     private LocalDateTime assignedAt;
+
+    private List<AssignmentResponseDto> assignmentHistory;
 }

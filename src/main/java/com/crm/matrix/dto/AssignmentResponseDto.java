@@ -22,6 +22,7 @@ public class AssignmentResponseDto {
     private String employeeCode;
 
     private String employeeName;
+    private String departmentName;
 
     private Boolean active;
 

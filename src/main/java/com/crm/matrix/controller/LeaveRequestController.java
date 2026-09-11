@@ -2,6 +2,7 @@ package com.crm.matrix.controller;
 
 import com.crm.matrix.dto.CreateLeaveRequest;
 import com.crm.matrix.dto.LeaveRequestResponse;
+import com.crm.matrix.security.HasPermission;
 import com.crm.matrix.service.LeaveRequestService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,9 +21,6 @@ public class LeaveRequestController {
     private final LeaveRequestService leaveRequestService;
 
 
-    // =========================================================
-    // EMPLOYEE - APPLY LEAVE
-    // =========================================================
 
     @PostMapping
     public ResponseEntity<LeaveRequestResponse> createLeaveRequest(Authentication authentication, @Valid @RequestBody CreateLeaveRequest request) {
@@ -32,11 +30,6 @@ public class LeaveRequestController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-
-    // =========================================================
-    // EMPLOYEE - MY LEAVE REQUESTS
-    // =========================================================
-
     @GetMapping("/my")
     public ResponseEntity<List<LeaveRequestResponse>> getMyLeaveRequests(Authentication authentication) {
 
@@ -44,22 +37,16 @@ public class LeaveRequestController {
     }
 
 
-    // =========================================================
-    // ADMIN - PENDING REQUESTS
-    // =========================================================
-
     @GetMapping("/pending")
+    @HasPermission("LEAVE_REQUEST")
     public ResponseEntity<List<LeaveRequestResponse>> getPendingLeaveRequests() {
 
         return ResponseEntity.ok(leaveRequestService.getPendingLeaveRequests());
     }
 
-
-    // =========================================================
-    // ADMIN - APPROVE
-    // =========================================================
-
     @PutMapping("/{leaveId}/approve")
+    @HasPermission("LEAVE_REQUEST")
+
     public ResponseEntity<LeaveRequestResponse> approveLeave(@PathVariable Long leaveId,
 
                                                              @RequestParam(required = false) String remark,
@@ -70,11 +57,9 @@ public class LeaveRequestController {
     }
 
 
-    // =========================================================
-    // ADMIN - REJECT
-    // =========================================================
-
     @PutMapping("/{leaveId}/reject")
+    @HasPermission("LEAVE_REQUEST")
+
     public ResponseEntity<LeaveRequestResponse> rejectLeave(@PathVariable Long leaveId,
 
                                                             @RequestParam(required = false) String remark,

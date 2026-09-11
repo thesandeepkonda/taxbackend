@@ -1,5 +1,4 @@
-
-        package com.crm.matrix.dto;
+package com.crm.matrix.dto;
 
 import lombok.Builder;
 import lombok.Data;

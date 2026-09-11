@@ -1,11 +1,15 @@
 package com.crm.matrix.controller;
 
 import com.crm.matrix.dto.AttendanceResponse;
+import com.crm.matrix.dto.TeamAttendanceResponse;
 import com.crm.matrix.service.AttendanceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/attendance")
@@ -63,5 +67,12 @@ public class AttendanceController {
         }
 
         return ResponseEntity.ok(response);
+    }
+    @GetMapping("/my-team")
+    public ResponseEntity<List<TeamAttendanceResponse>> getMyTeamAttendance(
+            @RequestParam(required = false) LocalDate date,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(attendanceService.getMyTeamAttendance(date, authentication));
     }
 }
