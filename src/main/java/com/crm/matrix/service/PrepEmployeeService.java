@@ -119,20 +119,57 @@ public class PrepEmployeeService {
         }
     }
 
+    @Transactional // <--- Moved here so the whole flow shares a session/transaction
     public PrepClientResponseDto submitDraft(Long assignmentId, MultipartFile file, String remarks, Authentication authentication) {
         if (file == null || file.isEmpty()) {
             throw new RuntimeException("Draft file is required");
         }
 
-        // STEP 1: FAST READ - Validate assignment and calculate next version
+        // STEP 1: Validate assignment and calculate next version
         Long clientId = validateAndGetClientIdForPrep(assignmentId, authentication);
         int version = getNextDraftVersion(clientId);
 
-        // STEP 2: SLOW I/O - Save to disk outside of a transaction
+        // STEP 2: Save to disk
         Path savedFilePath = saveDraftToDisk(clientId, version, file);
 
-        // STEP 3: FAST WRITE - Save to DB and trigger notifications
-        return finalizeDraftSubmission(assignmentId, version, file, savedFilePath, remarks, authentication);
+        // STEP 3: Save to DB and trigger notifications
+        return finalizeDraftSubmissionInternal(assignmentId, version, file, savedFilePath, remarks, authentication);
+    }
+
+    // Remove @Transactional from here since submitDraft now handles the transaction boundary
+    protected PrepClientResponseDto finalizeDraftSubmissionInternal(Long assignmentId, int version,
+                                                                    MultipartFile file, Path filePath, String remarks,
+                                                                    Authentication authentication) {
+        User employee = getLoggedInUser(authentication);
+        ClientAssignment assignment = assignmentRepository.findByIdAndEmployeeAndActiveTrue(assignmentId, employee)
+                .orElseThrow(() -> new RuntimeException("Assignment not found or not active"));
+        Client client = assignment.getClient();
+
+        TaxDraft draft = new TaxDraft();
+        draft.setClient(client);
+        draft.setPrepEmployee(employee);
+        draft.setDraftVersion(version);
+        draft.setFileName(file.getOriginalFilename());
+        draft.setFilePath(filePath.toAbsolutePath().toString());
+        draft.setContentType(file.getContentType());
+        draft.setPrepRemarks(remarks);
+        draft.setStatus("PENDING");
+        taxDraftRepository.save(draft);
+
+        client.setStatus(ClientStatus.DRAFT_READY);
+        client.setUpdatedAt(LocalDateTime.now());
+        clientRepository.save(client);
+
+        if (assignment.getAssignedBy() != null) {
+            notificationService.sendNotification(
+                    assignment.getAssignedBy(),
+                    "Tax Draft Ready",
+                    employee.getFirstName() + " submitted a tax draft for client: " + client.getName(),
+                    "DRAFT_READY","/clients"
+            );
+        }
+
+        return mapToPrepDto(assignment);
     }
     @Transactional(readOnly = true)
     protected Long validateAndGetClientIdForPrep(Long assignmentId, Authentication authentication) {
@@ -172,44 +209,44 @@ public class PrepEmployeeService {
         }
     }
 
-    // --- HELPER 4: DATABASE UPDATE ---
-    @Transactional
-    protected PrepClientResponseDto finalizeDraftSubmission(Long assignmentId, int version,
-                                                            MultipartFile file, Path filePath, String remarks,
-                                                            Authentication authentication) {
-
-        User employee = getLoggedInUser(authentication);
-        ClientAssignment assignment = assignmentRepository.findByIdAndEmployeeAndActiveTrue(assignmentId, employee)
-                .orElseThrow(() -> new RuntimeException("Assignment not found or not active"));
-        Client client = assignment.getClient();
-
-        TaxDraft draft = new TaxDraft();
-        draft.setClient(client);
-        draft.setPrepEmployee(employee);
-        draft.setDraftVersion(version);
-        draft.setFileName(file.getOriginalFilename());
-        draft.setFilePath(filePath.toAbsolutePath().toString());
-        draft.setContentType(file.getContentType());
-        draft.setPrepRemarks(remarks);
-        draft.setStatus("PENDING");
-        taxDraftRepository.save(draft);
-
-        client.setStatus(ClientStatus.DRAFT_READY);
-        client.setUpdatedAt(LocalDateTime.now());
-        clientRepository.save(client);
-
-        if (assignment.getAssignedBy() != null) {
-            notificationService.sendNotification(
-                    assignment.getAssignedBy(),
-                    "Tax Draft Ready",
-                    employee.getFirstName() + " submitted a tax draft for client: " + client.getName(),
-                    "DRAFT_READY","/clients"
-            );
-        }
-
-        // mapToPrepDto runs safely inside the transaction, avoiding LazyInit crashes
-        return mapToPrepDto(assignment);
-    }
+//    // --- HELPER 4: DATABASE UPDATE ---
+//    @Transactional
+//    protected PrepClientResponseDto finalizeDraftSubmission(Long assignmentId, int version,
+//                                                            MultipartFile file, Path filePath, String remarks,
+//                                                            Authentication authentication) {
+//
+//        User employee = getLoggedInUser(authentication);
+//        ClientAssignment assignment = assignmentRepository.findByIdAndEmployeeAndActiveTrue(assignmentId, employee)
+//                .orElseThrow(() -> new RuntimeException("Assignment not found or not active"));
+//        Client client = assignment.getClient();
+//
+//        TaxDraft draft = new TaxDraft();
+//        draft.setClient(client);
+//        draft.setPrepEmployee(employee);
+//        draft.setDraftVersion(version);
+//        draft.setFileName(file.getOriginalFilename());
+//        draft.setFilePath(filePath.toAbsolutePath().toString());
+//        draft.setContentType(file.getContentType());
+//        draft.setPrepRemarks(remarks);
+//        draft.setStatus("PENDING");
+//        taxDraftRepository.save(draft);
+//
+//        client.setStatus(ClientStatus.DRAFT_READY);
+//        client.setUpdatedAt(LocalDateTime.now());
+//        clientRepository.save(client);
+//
+//        if (assignment.getAssignedBy() != null) {
+//            notificationService.sendNotification(
+//                    assignment.getAssignedBy(),
+//                    "Tax Draft Ready",
+//                    employee.getFirstName() + " submitted a tax draft for client: " + client.getName(),
+//                    "DRAFT_READY","/clients"
+//            );
+//        }
+//
+//        // mapToPrepDto runs safely inside the transaction, avoiding LazyInit crashes
+//        return mapToPrepDto(assignment);
+//    }
 
     @Transactional(readOnly = true)
     public List<TaxDraftResponseDto> getClientDrafts(Long clientId) {

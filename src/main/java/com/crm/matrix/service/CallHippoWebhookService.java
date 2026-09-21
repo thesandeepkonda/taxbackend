@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 @Service
@@ -24,6 +25,10 @@ public class CallHippoWebhookService {
     private final ClientRepository clientRepository;
     private final UserRepository userRepository;
 
+
+    // =========================================================
+    // PROCESS CALLHIPPO WEBHOOK
+    // =========================================================
 
     @Transactional
     public void process(CallHippoWebhookRequest request) {
@@ -38,54 +43,80 @@ public class CallHippoWebhookService {
         System.out.println("CALLHIPPO WEBHOOK");
         System.out.println("======================================");
 
-        System.out.println("Type       : " + request.getType());
-        System.out.println("Call SID   : " + request.getCallSid());
-        System.out.println("From       : " + request.getFrom());
-        System.out.println("To         : " + request.getTo());
-        System.out.println("Status     : " + request.getStatus());
-        System.out.println("Call Type  : " + request.getCallType());
-        System.out.println("Email      : " + request.getEmail());
-        //System.out.println("Agent ID   : " + request.getAgentId());
+        System.out.println(
+                "Activity Type      : "
+                        + request.getActivityType()
+        );
+
+        System.out.println(
+                "Call SID           : "
+                        + request.getCallSid()
+        );
+
+        System.out.println(
+                "From Number        : "
+                        + request.getFromNumber()
+        );
+
+        System.out.println(
+                "To Number          : "
+                        + request.getToNumber()
+        );
+
+        System.out.println(
+                "Call Type          : "
+                        + request.getCallType()
+        );
+
+        System.out.println(
+                "Status             : "
+                        + request.getStatus()
+        );
+
+        System.out.println(
+                "Email              : "
+                        + request.getEmail()
+        );
+
+        System.out.println(
+                "Caller Name        : "
+                        + request.getCallerName()
+        );
+
+        System.out.println(
+                "Duration           : "
+                        + request.getDuration()
+        );
+
+//        System.out.println(
+//                "Duration Seconds   : "
+//                        + request.getD
+//        );
+
+        System.out.println(
+                "Recording URL      : "
+                        + request.getRecordingUrl()
+        );
+
+        System.out.println(
+                "Reason             : "
+                        + request.getReason()
+        );
+
+        System.out.println(
+                "======================================"
+        );
 
 
 
-
-        String agentId = null;
-
-        if (request.getExtraParams() != null) {
-
-            Object value =
-                    request.getExtraParams().get("agentId");
-
-            if (value != null) {
-                agentId = value.toString();
-            }
-        }
-
-        if (!hasText(agentId)
-                && request.getExtraParams() != null) {
-
-            Object value =
-                    request.getExtraParams().get("agentId");
-
-            if (value != null) {
-                agentId = value.toString();
-            }
-        }
-
-        System.out.println("Resolved Agent ID: " + agentId);
-
-
-        // =====================================================
-        // 2. FIND CLIENT
-        // =====================================================
 
         Client client = findClient(request);
 
         if (client != null) {
 
             System.out.println(
-                    "Client found: ID="
+                    "Client found:"
+                            + " ID="
                             + client.getId()
                             + ", Name="
                             + client.getName()
@@ -94,24 +125,24 @@ public class CallHippoWebhookService {
         } else {
 
             System.err.println(
-                    "Client NOT found. From="
-                            + request.getFrom()
-                            + ", To="
-                            + request.getTo()
+                    "Client NOT found."
+                            + " FromNumber="
+                            + request.getFromNumber()
+                            + ", ToNumber="
+                            + request.getToNumber()
             );
         }
 
 
-        // =====================================================
-        // 3. FIND USER
-        // =====================================================
 
-        User user = findUser(request, agentId);
+
+        User user = findUser(request);
 
         if (user != null) {
 
             System.out.println(
-                    "User found: ID="
+                    "User found:"
+                            + " ID="
                             + user.getId()
                             + ", Employee Code="
                             + user.getEmployeeCode()
@@ -120,15 +151,14 @@ public class CallHippoWebhookService {
         } else {
 
             System.err.println(
-                    "User NOT found. Agent ID="
-                            + agentId
+                    "User NOT found."
+                            + " Email="
+                            + request.getEmail()
             );
         }
 
 
-        // =====================================================
-        // 4. FIND EXISTING CALL HISTORY BY CALL SID
-        // =====================================================
+
 
         CallHistory callHistory = null;
 
@@ -144,45 +174,47 @@ public class CallHippoWebhookService {
             if (callHistory != null) {
 
                 System.out.println(
-                        "Existing CallHistory found by callSid. ID="
+                        "Existing CallHistory found"
+                                + " using callSid."
+                                + " ID="
                                 + callHistory.getId()
                 );
             }
         }
 
 
-        // =====================================================
-        // 5. FALLBACK:
-        // FIND EXISTING CALL WITHOUT CALL SID
-        // =====================================================
+
 
         if (callHistory == null
                 && client != null
-                && user != null) {
+                && user != null
+                && hasText(request.getToNumber())) {
+
+            String normalizedToNumber =
+                    PhoneNumberUtils.normalize(
+                            request.getToNumber()
+                    );
 
             callHistory =
                     callHistoryRepository
                             .findTopByClientIdAndUserIdAndToNumberOrderByCallTimeDesc(
                                     client.getId(),
                                     user.getId(),
-                                    request.getTo()
+                                    normalizedToNumber
                             )
                             .orElse(null);
 
             if (callHistory != null) {
 
                 System.out.println(
-                        "Existing CallHistory found using "
-                                + "client + user + phone. ID="
+                        "Existing CallHistory found"
+                                + " using client + user + phone."
+                                + " ID="
                                 + callHistory.getId()
                 );
             }
         }
 
-
-        // =====================================================
-        // 6. IF NO EXISTING RECORD -> CREATE
-        // =====================================================
 
         if (callHistory == null) {
 
@@ -190,17 +222,14 @@ public class CallHippoWebhookService {
                     "No existing CallHistory found."
             );
 
-            /*
-             * Because client_id and user_id are NOT NULL
-             * in your database, we MUST have both.
-             */
+
 
             if (client == null) {
 
                 throw new IllegalStateException(
                         "Cannot create CallHistory: "
                                 + "client not found for phone "
-                                + request.getTo()
+                                + request.getToNumber()
                 );
             }
 
@@ -208,51 +237,56 @@ public class CallHippoWebhookService {
 
                 throw new IllegalStateException(
                         "Cannot create CallHistory: "
-                                + "employee not found for agentId "
-                                + agentId
+                                + "employee not found for email "
+                                + request.getEmail()
                 );
             }
 
-            callHistory = new CallHistory();
+            callHistory =
+                    new CallHistory();
 
-            callHistory.setClient(client);
-            callHistory.setUser(user);
+            callHistory.setClient(
+                    client
+            );
+
+            callHistory.setUser(
+                    user
+            );
 
             System.out.println(
-                    "Creating new CallHistory"
+                    "Creating NEW CallHistory"
             );
 
         } else {
 
             System.out.println(
-                    "Updating existing CallHistory"
+                    "Updating EXISTING CallHistory"
             );
 
-            /*
-             * Existing client
-             */
+
 
             if (callHistory.getClient() == null
                     && client != null) {
 
-                callHistory.setClient(client);
+                callHistory.setClient(
+                        client
+                );
             }
 
             /*
-             * Existing user
+             * Fill missing user if required.
              */
 
             if (callHistory.getUser() == null
                     && user != null) {
 
-                callHistory.setUser(user);
+                callHistory.setUser(
+                        user
+                );
             }
         }
 
 
-        // =====================================================
-        // 7. FINAL SAFETY CHECK
-        // =====================================================
 
         if (callHistory.getClient() == null) {
 
@@ -269,20 +303,6 @@ public class CallHippoWebhookService {
         }
 
 
-        // =====================================================
-        // 8. AGENT ID
-        // =====================================================
-
-        if (hasText(agentId)) {
-
-            callHistory.setAgentId(agentId);
-        }
-
-
-        // =====================================================
-        // 9. CALL SID
-        // =====================================================
-
         if (hasText(request.getCallSid())) {
 
             callHistory.setCallSid(
@@ -291,28 +311,27 @@ public class CallHippoWebhookService {
         }
 
 
-        // =====================================================
-        // 10. PHONE NUMBERS
-        // =====================================================
 
-        if (hasText(request.getFrom())) {
+
+        if (hasText(request.getFromNumber())) {
 
             callHistory.setFromNumber(
-                    request.getFrom()
+                    request.getFromNumber()
             );
         }
 
-        if (hasText(request.getTo())) {
+
+        // =====================================================
+        // 9. TO NUMBER
+        // =====================================================
+
+        if (hasText(request.getToNumber())) {
 
             callHistory.setToNumber(
-                    request.getTo()
+                    request.getToNumber()
             );
         }
 
-
-        // =====================================================
-        // 11. CALL TYPE
-        // =====================================================
 
         if (hasText(request.getCallType())) {
 
@@ -322,9 +341,6 @@ public class CallHippoWebhookService {
         }
 
 
-        // =====================================================
-        // 12. STATUS
-        // =====================================================
 
         if (hasText(request.getStatus())) {
 
@@ -334,9 +350,6 @@ public class CallHippoWebhookService {
         }
 
 
-        // =====================================================
-        // 13. DURATION
-        // =====================================================
 
         if (hasText(request.getDuration())) {
 
@@ -345,29 +358,55 @@ public class CallHippoWebhookService {
             );
         }
 
-        if (request.getDurationSeconds() != null) {
-
-            callHistory.setDurationSeconds(
-                    request.getDurationSeconds()
-            );
-        }
 
 
-        // =====================================================
-        // 14. RECORDING
-        // =====================================================
+
+//        Integer durationSeconds =
+//                request.getDurationSeconds();
+
+//        if (durationSeconds == null
+//                && hasText(request.getDuration())) {
+//
+//            durationSeconds =
+//                    parseDurationToSeconds(
+//                            request.getDuration()
+//                    );
+//        }
+//
+//        if (durationSeconds != null) {
+//
+//            callHistory.setDurationSeconds(
+//                    durationSeconds
+//            );
+//        }
 
         if (hasText(request.getRecordingUrl())) {
 
-            callHistory.setRecordingUrl(
-                    request.getRecordingUrl()
-            );
+            String recordingUrl =
+                    request.getRecordingUrl();
+
+
+            if (recordingUrl.contains("media.callhippo.com")
+                    || recordingUrl.toLowerCase().endsWith(".mp3")) {
+
+                callHistory.setRecordingUrl(
+                        recordingUrl
+                );
+
+                System.out.println(
+                        "Saving direct MP3 recording URL: "
+                                + recordingUrl
+                );
+
+            } else {
+
+                System.out.println(
+                        "Ignoring non-direct recording URL: "
+                                + recordingUrl
+                );
+            }
         }
 
-
-        // =====================================================
-        // 15. HANGUP
-        // =====================================================
 
         if (hasText(request.getHangupBy())) {
 
@@ -377,9 +416,6 @@ public class CallHippoWebhookService {
         }
 
 
-        // =====================================================
-        // 16. ANSWERED DEVICE
-        // =====================================================
 
         if (hasText(request.getAnsweredDevice())) {
 
@@ -389,9 +425,6 @@ public class CallHippoWebhookService {
         }
 
 
-        // =====================================================
-        // 17. BILLING
-        // =====================================================
 
         if (request.getBilledMinutes() != null) {
 
@@ -399,6 +432,9 @@ public class CallHippoWebhookService {
                     request.getBilledMinutes()
             );
         }
+
+
+
 
         if (hasText(request.getCallCharge())) {
 
@@ -408,9 +444,6 @@ public class CallHippoWebhookService {
         }
 
 
-        // =====================================================
-        // 18. COUNTRY
-        // =====================================================
 
         if (hasText(request.getCountryName())) {
 
@@ -420,12 +453,12 @@ public class CallHippoWebhookService {
         }
 
 
-        // =====================================================
-        // 19. DATES
-        // =====================================================
+
 
         LocalDateTime callTime =
-                parseDate(request.getTime());
+                parseDate(
+                        request.getTime()
+                );
 
         if (callTime != null) {
 
@@ -435,8 +468,11 @@ public class CallHippoWebhookService {
         }
 
 
+
         LocalDateTime startTime =
-                parseDate(request.getStartTime());
+                parseDate(
+                        request.getStartTime()
+                );
 
         if (startTime != null) {
 
@@ -447,7 +483,9 @@ public class CallHippoWebhookService {
 
 
         LocalDateTime endTime =
-                parseDate(request.getEndTime());
+                parseDate(
+                        request.getEndTime()
+                );
 
         if (endTime != null) {
 
@@ -457,9 +495,16 @@ public class CallHippoWebhookService {
         }
 
 
-        // =====================================================
-        // 20. SAVE
-        // =====================================================
+
+        if (hasText(request.getReason())) {
+
+
+
+            // callHistory.setReason(request.getReason());
+        }
+
+
+
 
         CallHistory saved =
                 callHistoryRepository.save(
@@ -475,7 +520,8 @@ public class CallHippoWebhookService {
         );
 
         System.out.println(
-                "ID       : " + saved.getId()
+                "ID       : "
+                        + saved.getId()
         );
 
         System.out.println(
@@ -499,36 +545,39 @@ public class CallHippoWebhookService {
         );
 
         System.out.println(
+                "Duration : "
+                        + saved.getDuration()
+        );
+
+        System.out.println(
+                "Recording: "
+                        + saved.getRecordingUrl()
+        );
+
+        System.out.println(
                 "======================================"
         );
     }
 
 
-    // =========================================================
-    // FIND CLIENT
-    // =========================================================
 
     private Client findClient(
             CallHippoWebhookRequest request
     ) {
 
-        /*
-         * For OUTGOING calls:
-         *
-         * to = client phone
-         *
-         * So check TO first.
-         */
 
-        String phone = request.getTo();
+        String phone =
+                request.getToNumber();
 
         if (hasText(phone)) {
 
             String normalizedPhone =
-                    PhoneNumberUtils.normalize(phone);
+                    PhoneNumberUtils.normalize(
+                            phone
+                    );
 
             System.out.println(
-                    "Searching client using TO phone: "
+                    "Searching client using TO number: "
                             + normalizedPhone
             );
 
@@ -538,24 +587,24 @@ public class CallHippoWebhookService {
                     );
 
             if (client.isPresent()) {
+
                 return client.get();
             }
         }
 
 
-        /*
-         * Fallback to FROM
-         */
-
-        phone = request.getFrom();
+        phone =
+                request.getFromNumber();
 
         if (hasText(phone)) {
 
             String normalizedPhone =
-                    PhoneNumberUtils.normalize(phone);
+                    PhoneNumberUtils.normalize(
+                            phone
+                    );
 
             System.out.println(
-                    "Searching client using FROM phone: "
+                    "Searching client using FROM number: "
                             + normalizedPhone
             );
 
@@ -565,57 +614,52 @@ public class CallHippoWebhookService {
                     );
 
             if (client.isPresent()) {
+
                 return client.get();
             }
         }
+
 
         return null;
     }
 
 
-    // =========================================================
-    // FIND USER
-    // =========================================================
+
 
     private User findUser(
-            CallHippoWebhookRequest request,
-            String agentId
+            CallHippoWebhookRequest request
     ) {
 
         /*
-         * First try agentId
-         */
-
-        if (hasText(agentId)) {
-
-            Optional<User> user =
-                    userRepository
-                            .findByCallHippoAgentId(
-                                    agentId
-                            );
-
-            if (user.isPresent()) {
-                return user.get();
-            }
-        }
-
-
-        /*
-         * Fallback to employee email
+         * CallHippo webhook provides:
+         *
+         * email
+         *
+         * Example:
+         *
+         * "email": "test@example.com"
+         *
+         * Use this to find the CRM employee.
          */
 
         if (hasText(request.getEmail())) {
 
+            System.out.println(
+                    "Searching employee using email: "
+                            + request.getEmail()
+            );
+
             Optional<User> user =
-                    userRepository
-                            .findByEmail(
-                                    request.getEmail()
-                            );
+                    userRepository.findByEmail(
+                            request.getEmail()
+                    );
 
             if (user.isPresent()) {
+
                 return user.get();
             }
         }
+
 
         return null;
     }
@@ -625,7 +669,9 @@ public class CallHippoWebhookService {
     // CHECK TEXT
     // =========================================================
 
-    private boolean hasText(String value) {
+    private boolean hasText(
+            String value
+    ) {
 
         return value != null
                 && !value.isBlank();
@@ -633,7 +679,7 @@ public class CallHippoWebhookService {
 
 
     // =========================================================
-    // PARSE DATE
+    // PARSE CALLHIPPO DATE
     // =========================================================
 
     private LocalDateTime parseDate(
@@ -641,25 +687,156 @@ public class CallHippoWebhookService {
     ) {
 
         if (!hasText(value)) {
+
+            return null;
+        }
+
+
+        /*
+         * CallHippo example:
+         *
+         * 2020-05-12T00:53:57.688+0000
+         */
+
+        try {
+
+            DateTimeFormatter formatter =
+                    DateTimeFormatter.ofPattern(
+                            "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+                    );
+
+            return OffsetDateTime
+                    .parse(
+                            value,
+                            formatter
+                    )
+                    .toLocalDateTime();
+
+        } catch (Exception ignored) {
+
+            /*
+             * Try standard ISO format.
+             */
+
+            try {
+
+                return OffsetDateTime
+                        .parse(value)
+                        .toLocalDateTime();
+
+            } catch (Exception ignored2) {
+
+                /*
+                 * Try LocalDateTime.
+                 */
+
+                try {
+
+                    return LocalDateTime.parse(
+                            value
+                    );
+
+                } catch (Exception ignored3) {
+
+                    System.err.println(
+                            "Unable to parse CallHippo date: "
+                                    + value
+                    );
+
+                    return null;
+                }
+            }
+        }
+    }
+
+
+    // =========================================================
+    // PARSE DURATION
+    // =========================================================
+
+    private Integer parseDurationToSeconds(
+            String duration
+    ) {
+
+        if (!hasText(duration)) {
+
             return null;
         }
 
         try {
 
-            return OffsetDateTime
-                    .parse(value)
-                    .toLocalDateTime();
+            String[] parts =
+                    duration.trim().split(":");
 
-        } catch (Exception ignored) {
+            /*
+             * HH:mm:ss
+             */
 
-            try {
+            if (parts.length == 3) {
 
-                return LocalDateTime.parse(value);
+                int hours =
+                        Integer.parseInt(
+                                parts[0]
+                        );
 
-            } catch (Exception ignored2) {
+                int minutes =
+                        Integer.parseInt(
+                                parts[1]
+                        );
 
-                return null;
+                int seconds =
+                        Integer.parseInt(
+                                parts[2]
+                        );
+
+                return
+                        (hours * 3600)
+                                + (minutes * 60)
+                                + seconds;
             }
+
+
+            /*
+             * mm:ss
+             */
+
+            if (parts.length == 2) {
+
+                int minutes =
+                        Integer.parseInt(
+                                parts[0]
+                        );
+
+                int seconds =
+                        Integer.parseInt(
+                                parts[1]
+                        );
+
+                return
+                        (minutes * 60)
+                                + seconds;
+            }
+
+
+            /*
+             * Seconds only.
+             */
+
+            if (parts.length == 1) {
+
+                return Integer.parseInt(
+                        parts[0]
+                );
+            }
+
+        } catch (Exception ex) {
+
+            System.err.println(
+                    "Unable to parse duration: "
+                            + duration
+            );
         }
+
+        return null;
     }
 }

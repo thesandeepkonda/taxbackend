@@ -1,10 +1,6 @@
 package com.crm.matrix.controller;
 
 import com.crm.matrix.dto.CallHippoWebhookRequest;
-import com.crm.matrix.repository.CallHistoryRepository;
-import com.crm.matrix.repository.ClientRepository;
-import com.crm.matrix.repository.UserRepository;
-import com.crm.matrix.service.CallHippoService;
 import com.crm.matrix.service.CallHippoWebhookService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,13 +11,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class CallHippoWebhookController {
 
-    private final CallHippoService callHippoService;
     private final CallHippoWebhookService callHippoWebhookService;
-
-    private final ClientRepository clientRepository;
-    private final UserRepository userRepository;
-    private final CallHistoryRepository callHistoryRepository;
-
 
     @PostMapping("/webhook")
     public ResponseEntity<?> callHippoWebhook(
@@ -32,11 +22,14 @@ public class CallHippoWebhookController {
 
             System.out.println("======================================");
             System.out.println("CALLHIPPO WEBHOOK RECEIVED");
-            System.out.println("Call SID : " + request.getCallSid());
-            System.out.println("From     : " + request.getFrom());
-            System.out.println("To       : " + request.getTo());
-            System.out.println("Status   : " + request.getStatus());
-            System.out.println("Duration : " + request.getDuration());
+            System.out.println("Activity Type : " + request.getActivityType());
+            System.out.println("Call SID      : " + request.getCallSid());
+            System.out.println("From Number   : " + request.getFromNumber());
+            System.out.println("To Number     : " + request.getToNumber());
+            System.out.println("Call Type     : " + request.getCallType());
+            System.out.println("Status        : " + request.getStatus());
+            System.out.println("Duration      : " + request.getDuration());
+            System.out.println("Email         : " + request.getEmail());
             System.out.println("======================================");
 
             callHippoWebhookService.process(request);

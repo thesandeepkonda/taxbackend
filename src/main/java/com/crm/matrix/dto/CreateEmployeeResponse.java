@@ -44,4 +44,10 @@ public class CreateEmployeeResponse {
     private String attendancePolicyName;
 
     private String workMode;
+
+    private String callHippoApiToken;
+
+    private String callHippoFromNumber;
+
+    private String callHippoAgentId;
 }

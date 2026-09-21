@@ -1,5 +1,6 @@
 package com.crm.matrix.repository;
 
+import aj.org.objectweb.asm.commons.Remapper;
 import com.crm.matrix.entity.Client;
 import com.crm.matrix.entity.ClientDocument;
 import com.crm.matrix.entity.DocumentRequest;
@@ -44,6 +45,8 @@ public interface ClientDocumentRepository
             Long clientId,
             DocumentStatus status
     );
+
+    Page<ClientDocument> findByClientIdAndStatus(Long clientId, DocumentStatus status, Pageable pageable);
 
 
     // =========================================================
@@ -124,4 +127,13 @@ public interface ClientDocumentRepository
     List<ClientDocument> findByRequestOrderByUpdatedAtDesc(
             DocumentRequest request
     );
+
+    @Query("SELECT c FROM Client c WHERE " +
+            "(SELECT COUNT(d) FROM ClientDocument d WHERE d.client = c) > 0 " +
+            "AND " +
+            "(SELECT COUNT(d) FROM ClientDocument d WHERE d.client = c AND d.status != com.crm.matrix.enums.DocumentStatus.VERIFIED) = 0")
+    Page<Client> findClientsWithAllDocumentsVerified(Pageable pageable);
+    // ClientDocumentRepository interface లోపల:
+    @Query("SELECT DISTINCT d.client FROM ClientDocument d WHERE d.status = com.crm.matrix.enums.DocumentStatus.VERIFIED")
+    Page<Client> findClientsWithVerifiedDocuments(Pageable pageable);
 }

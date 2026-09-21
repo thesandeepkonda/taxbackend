@@ -5,6 +5,7 @@ import com.crm.matrix.enums.ClientStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 
@@ -38,4 +39,6 @@ public interface ClientRepository
 
 
      //Optional<Client> findByUserId(Long id);
+     @Query("SELECT c FROM Client c WHERE NOT EXISTS (SELECT a FROM ClientAssignment a WHERE a.client = c AND a.active = true)")
+     Page<Client> findUnassignedClients(Pageable pageable);
 }

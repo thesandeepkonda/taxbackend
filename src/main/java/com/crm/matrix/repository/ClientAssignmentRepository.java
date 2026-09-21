@@ -178,4 +178,13 @@ public interface ClientAssignmentRepository
 """)
     Page<ClientAssignment> findAllActiveAssignmentsWithDetails(Pageable pageable);
 
-}
+
+    @Query("""
+    SELECT ca FROM ClientAssignment ca 
+    JOIN FETCH ca.client c 
+    JOIN FETCH ca.employee e 
+    WHERE ca.active = true 
+    AND UPPER(c.currentStage) = UPPER(:stage)
+""")
+    Page<ClientAssignment> findActiveAssignmentsByClientStage(@Param("stage") String stage, Pageable pageable);
+    }

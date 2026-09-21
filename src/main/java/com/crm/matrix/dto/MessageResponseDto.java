@@ -11,5 +11,4 @@ public class MessageResponseDto {
 
     private String message;
 
-    private String externalMessageId;
 }

@@ -106,32 +106,30 @@ public class LeaveRequestService {
 
     @Transactional
     public LeaveRequestResponse approveLeave(Long leaveId, String adminEmployeeCode, String adminRemark) {
-
         User admin = getActiveEmployee(adminEmployeeCode);
-
-
         LeaveRequest leaveRequest = getLeaveRequest(leaveId);
 
         if (leaveRequest.getStatus() != LeaveRequestStatus.PENDING) {
-
             throw new IllegalStateException("Only pending leave requests can be approved");
         }
 
         boolean approvedOverlap = leaveRequestRepository.existsByUserIdAndStatusAndFromDateLessThanEqualAndToDateGreaterThanEqual(leaveRequest.getUser().getId(),
-
                 LeaveRequestStatus.APPROVED,
-
                 leaveRequest.getToDate(),
-
                 leaveRequest.getFromDate());
+
         if (approvedOverlap) {
             throw new IllegalStateException("Employee already has approved leave for the selected dates");
         }
+
         leaveRequest.setStatus(LeaveRequestStatus.APPROVED);
         leaveRequest.setAdminRemark(adminRemark);
         leaveRequest.setProcessedBy(admin);
         leaveRequest.setProcessedAt(LocalDateTime.now());
+
         LeaveRequest saved = leaveRequestRepository.save(leaveRequest);
+
+        // EXISTING NOTIFICATION
         notificationService.sendNotification(
                 leaveRequest.getUser(),
                 "Leave Approved",
@@ -139,6 +137,28 @@ public class LeaveRequestService {
                 "LEAVE_APPROVED",
                 "/admin/leave-approvals"
         );
+
+        // ---> ADD NEW TEAM LEAD NOTIFICATION HERE <---
+        User employee = leaveRequest.getUser();
+        if (employee.getTeam() != null && employee.getTeam().getTeamLead() != null) {
+            User teamLead = employee.getTeam().getTeamLead();
+
+            // Ensure the person on leave isn't the team lead themselves
+            if (!teamLead.getId().equals(employee.getId())) {
+                String message = employee.getFirstName() + " is on approved leave from "
+                        + leaveRequest.getFromDate() + " to " + leaveRequest.getToDate()
+                        + ". Please review and reassign their pending tasks.";
+
+                notificationService.sendNotification(
+                        teamLead,
+                        "Action Required: Team Member on Leave",
+                        message,
+                        "WORK_REASSIGNMENT",
+                        "/team/assignments" // Update this link to your actual frontend route
+                );
+            }
+        }
+
         return mapToResponse(saved);
     }
 
@@ -252,5 +272,35 @@ public class LeaveRequestService {
                 .processedAt(leaveRequest.getProcessedAt())
 
                 .build();
+    }
+
+    // =========================================================
+    // GET ALL EMPLOYEES ON LEAVE TODAY (ADMIN)
+    // =========================================================
+    @Transactional(readOnly = true)
+    public List<LeaveRequestResponse> getAllEmployeesOnLeaveToday() {
+        LocalDate today = LocalDate.now();
+        return leaveRequestRepository.findActiveLeaves(LeaveRequestStatus.APPROVED, today)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    // =========================================================
+    // GET MY TEAM MEMBERS ON LEAVE TODAY (TEAM LEAD)
+    // =========================================================
+    @Transactional(readOnly = true)
+    public List<LeaveRequestResponse> getMyTeamMembersOnLeaveToday(String loggedInEmployeeCode) {
+        User teamLead = getActiveEmployee(loggedInEmployeeCode);
+
+        if (teamLead.getTeam() == null) {
+            throw new IllegalStateException("You are not assigned to a team.");
+        }
+
+        LocalDate today = LocalDate.now();
+        return leaveRequestRepository.findActiveLeavesByTeam(teamLead.getTeam().getId(), LeaveRequestStatus.APPROVED, today)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 }

@@ -337,13 +337,18 @@ public class AdminCRMService {
         return userRepository.findByEmployeeCode(authentication.getName()).orElseThrow(() -> new RuntimeException("Admin not found"));
     }
 
-    // =========================================================
-    // GET ALL CLIENTS
-    // =========================================================
+
 
     @Transactional(readOnly = true)
-    public Page<AdminClientResponseDto> getClients(Pageable pageable) {
-        // Fetch assignments with clients pre-loaded in 1 single query instead of N+1 queries
+    public Page<AdminClientResponseDto> getClients(String stage, Pageable pageable) {
+
+        // If a stage (e.g., DOC, PREP, NEW) is provided, filter by it
+        if (stage != null && !stage.trim().isEmpty()) {
+            return assignmentRepository.findActiveAssignmentsByClientStage(stage.trim(), pageable)
+                    .map(this::mapAssignmentToClientResponse); // Uses your existing mapping[cite: 2]
+        }
+
+        // Otherwise, return all active assignments[cite: 2]
         return assignmentRepository.findAllActiveAssignmentsWithDetails(pageable)
                 .map(this::mapAssignmentToClientResponse);
     }
@@ -1080,12 +1085,17 @@ public class AdminCRMService {
         for (Long clientId : request.getClientIds()) {
             Client client = clientRepository.findById(clientId).orElseThrow(() -> new RuntimeException("Client not found: " + clientId));
 
-            // 1. SECURITY GATE: ENFORCE DOCUMENT APPROVAL RULE
-            long unverifiedDocs = clientDocumentRepository.findByClientIdOrderByUpdatedAtDesc(clientId).stream().filter(doc -> doc.getStatus() != com.crm.matrix.enums.DocumentStatus.VERIFIED).count();
+            // ========================================================
+            // 1. SECURITY GATE: STRICT DOCUMENT APPROVAL RULE
+            // ========================================================
+            long totalDocs = clientDocumentRepository.countByClientId(clientId);
+            long verifiedDocs = clientDocumentRepository.countByClientIdAndStatus(clientId, DocumentStatus.VERIFIED);
 
-            if (unverifiedDocs > 0) {
-                throw new RuntimeException("Cannot assign client " + client.getName() + " to Preparation. All documents must be VERIFIED first.");
+            // Fail if they have 0 documents, OR if the verified count doesn't match the total count
+            if (totalDocs == 0 || verifiedDocs != totalDocs) {
+                throw new RuntimeException("Cannot assign client " + client.getName() + " to Preparation. They must have at least one document and ALL documents must be VERIFIED.");
             }
+            // ========================================================
 
             // 2. Advance the Stage and Status
             client.setCurrentStage("PREP");
@@ -1113,6 +1123,7 @@ public class AdminCRMService {
 
             response.add(mapClient(client));
         }
+
         if (response.size() == 1) {
             notificationService.sendNotification(prepEmployee, "New Prep Client", "Client " + response.get(0).getName() + " is ready for tax preparation.", "ASSIGNMENT","/clients");
         } else if (response.size() > 1) {
@@ -1287,5 +1298,39 @@ public class AdminCRMService {
         List<ClientAssignment> assignments = assignmentRepository.findByClientIdOrderByAssignedAtDesc(clientId);
 
         return assignments.stream().map(this::mapAssignment).toList();
+    }
+
+
+
+    @Transactional(readOnly = true)
+    public Page<AdminClientDocumentStatusDto> getVerifiedDocumentClients(Pageable pageable) {
+        // Calling the new strict query
+        return clientDocumentRepository.findClientsWithAllDocumentsVerified(pageable)
+                .map(this::mapVerifiedClient);
+    }
+
+    private AdminClientDocumentStatusDto mapVerifiedClient(Client client) {
+        long totalDocuments = clientDocumentRepository.countByClientId(client.getId());
+        long verifiedDocuments = clientDocumentRepository.countByClientIdAndStatus(client.getId(), DocumentStatus.VERIFIED);
+        long pendingDocuments = totalDocuments - verifiedDocuments;
+
+        return AdminClientDocumentStatusDto.builder()
+                .clientId(client.getId())
+                .name(client.getName())
+                .email(client.getEmail())
+                .phone(client.getPhone())
+                .totalDocuments(totalDocuments)
+                .submittedDocuments(verifiedDocuments)
+                .pendingDocuments(pendingDocuments)
+                .documentStatus("VERIFIED")
+                .currentStage(client.getCurrentStage()) // <-- ఇక్కడ స్టేజ్ యాడ్ చేయబడింది
+                .status(client.getStatus())             // <-- ఇక్కడ క్లయింట్ స్టేటస్ యాడ్ చేయబడింది
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AdminClientResponseDto> getUnassignedClients(Pageable pageable) {
+        return clientRepository.findUnassignedClients(pageable)
+                .map(this::mapClient); // Uses your existing mapping logic
     }
 }

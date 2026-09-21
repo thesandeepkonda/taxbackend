@@ -1,10 +1,12 @@
 package com.crm.matrix.controller;
 
-import com.crm.matrix.dto.AttendanceResponse;
-import com.crm.matrix.dto.TeamAttendanceResponse;
+import com.crm.matrix.dto.*;
+import com.crm.matrix.enums.AttendanceStatus;
 import com.crm.matrix.service.AttendanceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -75,4 +77,30 @@ public class AttendanceController {
 
         return ResponseEntity.ok(attendanceService.getMyTeamAttendance(date, authentication));
     }
+    @GetMapping("/admin/attendance-summary")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<AttendanceSummaryDto> getAdminAttendanceSummary() {
+        return ResponseEntity.ok(attendanceService.getAdminAttendanceSummary());
+    }
+
+    // TEAM LEAD ENDPOINT
+    @GetMapping("/team/attendance-summary")
+    @PreAuthorize("hasAuthority('TEAM_LEAD')")
+    public ResponseEntity<AttendanceSummaryDto> getTeamAttendanceSummary(Authentication authentication) {
+        return ResponseEntity.ok(attendanceService.getTeamAttendanceSummary(authentication.getName()));
+    }
+//    @GetMapping("/admin/attendance/absents")
+//    public ResponseEntity<List<UserResponseDto>> getAbsentEmployees(
+//            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+//
+//        List<UserResponseDto> absents = attendanceService.getAllAbsenteesByDate(date);
+//        return ResponseEntity.ok(absents);
+//    }
+@GetMapping("/daily-summary")
+public ResponseEntity<List<AdminDailyAttendanceDto>> getDailyAttendanceSummary(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+        @RequestParam(required = false) AttendanceStatus status) {
+
+    return ResponseEntity.ok(attendanceService.getAllCompanyAttendanceByDate(date, status));
+}
 }

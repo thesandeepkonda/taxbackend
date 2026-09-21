@@ -39,6 +39,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByActiveTrue();
 
+    List<User> findByTeamId(Long teamId);
+
     @Query("""
         SELECT u FROM User u 
         JOIN FETCH u.role r 
@@ -56,4 +58,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByCallHippoAgentId(
             String callHippoAgentId
     );
+    long countByActiveTrue();
+    long countByTeamIdAndActiveTrue(Long teamId);
 }

@@ -1,5 +1,6 @@
 package com.crm.matrix.dto;
 
+import com.crm.matrix.enums.ClientStatus;
 import com.crm.matrix.enums.DocumentStatus;
 import lombok.*;
 
@@ -25,4 +26,6 @@ public class AdminClientDocumentStatusDto {
     private long pendingDocuments;
 
     private String documentStatus;
+    private  String currentStage;
+    private ClientStatus status;
 }

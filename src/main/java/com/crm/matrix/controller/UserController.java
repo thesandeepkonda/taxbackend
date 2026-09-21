@@ -125,5 +125,26 @@ public class UserController {
         ));
     }
 
+    @PostMapping("/forgot-password")
+    public ResponseEntity<MessageResponseDto> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        userService.forgotPassword(request.getEmail());
+
+        return ResponseEntity.ok(MessageResponseDto.builder()
+                .success(true)
+                .message("If the email exists, an OTP has been sent.")
+                .build());
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<MessageResponseDto> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        userService.resetPasswordWithOtp(request.getEmail(), request.getOtp(), request.getNewPassword());
+
+        return ResponseEntity.ok(MessageResponseDto.builder()
+                .success(true)
+                .message("Password reset successfully. You can now log in.")
+                .build());
+    }
+
+
 
 }

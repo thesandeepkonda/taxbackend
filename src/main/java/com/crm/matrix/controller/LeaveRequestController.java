@@ -68,4 +68,16 @@ public class LeaveRequestController {
 
         return ResponseEntity.ok(leaveRequestService.rejectLeave(leaveId, authentication.getName(), remark));
     }
+
+    @GetMapping("/admin/on-leave-today")
+    @HasPermission("LEAVE_REQUEST")
+    public ResponseEntity<List<LeaveRequestResponse>> getAllEmployeesOnLeaveToday() {
+        return ResponseEntity.ok(leaveRequestService.getAllEmployeesOnLeaveToday());
+    }
+
+    // TEAM LEAD ENDPOINT
+    @GetMapping("/team/on-leave-today")
+    public ResponseEntity<List<LeaveRequestResponse>> getMyTeamMembersOnLeaveToday(Authentication authentication) {
+        return ResponseEntity.ok(leaveRequestService.getMyTeamMembersOnLeaveToday(authentication.getName()));
+    }
 }

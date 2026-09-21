@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.data.domain.Pageable;
 import java.security.SecureRandom;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -28,6 +29,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final AttendancePolicyRepository attendancePolicyRepository;
     private final ActivityLogRepository activityLogRepository;
+    private final EmailService emailService;
 
 
     private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz" + "0123456789" + "@#$%&*!";
@@ -144,6 +146,18 @@ public class UserService {
 
         user.setRole(role);
 
+        user.setCallHippoApiToken(
+                request.getCallHippoApiToken()
+        );
+
+        user.setCallHippoFromNumber(
+                request.getCallHippoFromNumber()
+        );
+
+        user.setCallHippoAgentId(
+                request.getCallHippoAgentId()
+        );
+
 
         User savedUser = userRepository.save(user);
 
@@ -154,6 +168,7 @@ public class UserService {
 
             teamRepository.save(team);
         }
+        emailService.sendCredentialsEmail(savedUser.getEmail(), savedUser.getEmployeeCode(), temporaryPassword);
 
 
         return buildEmployeeResponse(savedUser, temporaryPassword);
@@ -283,6 +298,30 @@ public class UserService {
         user.setWorkMode(request.getWorkMode());
         user.setActive(request.getActive());
 
+        if (request.getCallHippoApiToken() != null
+                && !request.getCallHippoApiToken().isBlank()) {
+
+            user.setCallHippoApiToken(
+                    request.getCallHippoApiToken()
+            );
+        }
+
+        if (request.getCallHippoFromNumber() != null
+                && !request.getCallHippoFromNumber().isBlank()) {
+
+            user.setCallHippoFromNumber(
+                    request.getCallHippoFromNumber()
+            );
+        }
+
+        if (request.getCallHippoAgentId() != null
+                && !request.getCallHippoAgentId().isBlank()) {
+
+            user.setCallHippoAgentId(
+                    request.getCallHippoAgentId()
+            );
+        }
+
         User savedUser = userRepository.save(user);
 
         if (isTeamLead(newRole)) {
@@ -371,6 +410,11 @@ public class UserService {
 
 
                 .workMode(user.getWorkMode() != null ? user.getWorkMode().name() : null)
+
+                .callHippoApiToken(user.getCallHippoApiToken())
+                .callHippoFromNumber(user.getCallHippoFromNumber())
+                .callHippoAgentId(user.getCallHippoAgentId())
+
 
 
                 // =================================================
@@ -606,5 +650,51 @@ public class UserService {
         logActivity(user, adminEmployeeCode, "PASSWORD_RESET", "Admin performed password reset");
 
         return newTemporaryPassword;
+    }
+
+    private String generateOtp() {
+        int otp = 100000 + secureRandom.nextInt(900000);
+        return String.valueOf(otp);
+    }
+    @Transactional
+    public void forgotPassword(String email) {
+        // 1. Find user by email
+        User user = userRepository.findByEmail(email.trim().toLowerCase())
+                .orElseThrow(() -> new IllegalArgumentException("No account found with this email"));
+
+        if (!Boolean.TRUE.equals(user.getActive())) {
+            throw new IllegalStateException("Account is inactive");
+        }
+
+        // 2. Generate and set OTP
+        String otp = generateOtp();
+        user.setResetOtp(otp);
+        user.setResetOtpExpiry(LocalDateTime.now().plusMinutes(10)); // 10-minute validity
+        userRepository.save(user);
+
+        // 3. Send email
+        emailService.sendPasswordResetEmail(user.getEmail(), otp);
+    }
+
+    @Transactional
+    public void resetPasswordWithOtp(String email, String otp, String newPassword) {
+        User user = userRepository.findByEmail(email.trim().toLowerCase())
+                .orElseThrow(() -> new IllegalArgumentException("No account found with this email"));
+
+        // Verify OTP exists and matches
+        if (user.getResetOtp() == null || !user.getResetOtp().equals(otp.trim())) {
+            throw new IllegalArgumentException("Invalid OTP");
+        }
+
+        // Verify expiration
+        if (user.getResetOtpExpiry() == null || user.getResetOtpExpiry().isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("OTP has expired. Please request a new one.");
+        }
+
+        // Reset password and clear OTP fields
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setResetOtp(null);
+        user.setResetOtpExpiry(null);
+        userRepository.save(user);
     }
 }

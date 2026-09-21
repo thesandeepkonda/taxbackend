@@ -1,12 +1,20 @@
 package com.crm.matrix.controller;
 
 import com.crm.matrix.dto.CallHippoConfigRequest;
+import com.crm.matrix.dto.CallHistoryResponse;
+import com.crm.matrix.dto.ClientCallReportResponse;
 import com.crm.matrix.entity.User;
 import com.crm.matrix.repository.UserRepository;
+import com.crm.matrix.service.CallHippoAdminService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -14,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 public class AdminCallHippoController {
 
     private final UserRepository userRepository;
+    private final CallHippoAdminService callHippoAdminService;
 
 
     @PutMapping("/{userId}/callhippo")
@@ -88,4 +97,9 @@ public class AdminCallHippoController {
                 "CallHippo configuration saved successfully"
         );
     }
+
+
+
+
+
 }

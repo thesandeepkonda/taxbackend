@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -45,32 +46,14 @@ public class AdminCRMController {
     }
 
     @GetMapping("/clients")
-    public ResponseEntity<Page<AdminClientResponseDto>> getClients(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size, @RequestParam(defaultValue = "createdAt,desc") String sort) {
+    public ResponseEntity<Page<AdminClientResponseDto>> getClients(
+            @RequestParam(required = false) String stage,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
 
-        String[] sortParts = sort.split(",");
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "assignedAt"));
 
-        String property = sortParts[0].trim();
-
-        Sort.Direction direction = Sort.Direction.DESC;
-
-        if (sortParts.length > 1) {
-            try {
-                direction = Sort.Direction.fromString(sortParts[1].trim());
-            } catch (IllegalArgumentException ignored) {
-                direction = Sort.Direction.DESC;
-            }
-        }
-
-        // Only allow valid Client properties
-        List<String> allowedProperties = List.of("id", "name", "email", "phone", "status", "currentStage", "nextFollowUpAt", "createdAt", "updatedAt");
-
-        if (!allowedProperties.contains(property)) {
-            property = "createdAt";
-        }
-
-        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, property));
-
-        return ResponseEntity.ok(adminCRMService.getClients(pageable));
+        return ResponseEntity.ok(adminCRMService.getClients(stage, pageable));
     }
 
 
@@ -388,6 +371,26 @@ public class AdminCRMController {
 
         List<AssignmentResponseDto> history = adminCRMService.getClientAssignmentHistory(clientId);
         return ResponseEntity.ok(history);
+    }
+
+
+    @GetMapping("/documents/verified")
+    public ResponseEntity<Page<AdminClientDocumentStatusDto>> getVerifiedDocumentClients(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AdminClientDocumentStatusDto> result = adminCRMService.getVerifiedDocumentClients(pageable);
+
+        return ResponseEntity.ok(result);
+    }
+    @GetMapping("/unassigned")
+    public ResponseEntity<Page<AdminClientResponseDto>> getUnassignedClients(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return ResponseEntity.ok(adminCRMService.getUnassignedClients(pageable));
     }
 
 }

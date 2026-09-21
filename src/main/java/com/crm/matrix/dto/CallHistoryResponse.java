@@ -1,143 +1,151 @@
 package com.crm.matrix.dto;
 
 import com.crm.matrix.entity.CallHistory;
-import lombok.Getter;
-import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-@Getter
-@Setter
-public class CallHistoryResponse {
+public record CallHistoryResponse(
 
-    private Long id;
+        Long id,
 
-    private Long clientId;
-    private String clientName;
+        Long clientId,
 
-    private Long userId;
-    private String employeeCode;
+        String clientName,
 
-    private String callSid;
+        Long userId,
 
-    private String fromNumber;
-    private String toNumber;
+        String employeeCode,
 
-    private String agentId;
+        String employeeName,
 
-    private String callType;
-    private String status;
+        String agentId,
 
-    private String duration;
-    private Integer durationSeconds;
+        String callSid,
 
-    private String recordingUrl;
+        String callType,
 
-    private String hangupBy;
-    private String answeredDevice;
+        String status,
 
-    private Double billedMinutes;
+        String fromNumber,
 
-    private String callCharge;
-    private String countryName;
+        String toNumber,
 
-    private LocalDateTime callTime;
-    private LocalDateTime startTime;
-    private LocalDateTime endTime;
+        String duration,
 
-    public static CallHistoryResponse from(CallHistory call) {
+        Integer durationSeconds,
 
-        CallHistoryResponse response =
-                new CallHistoryResponse();
+        Double durationMinutes,
 
-        response.setId(call.getId());
+        LocalDateTime callTime,
 
-        if (call.getClient() != null) {
-            response.setClientId(
-                    call.getClient().getId()
-            );
+        LocalDateTime startTime,
 
-            response.setClientName(
-                    call.getClient().getName()
-            );
+        LocalDateTime endTime,
+
+        String recordingUrl,
+
+        String hangupBy,
+
+        String answeredDevice,
+
+        Double billedMinutes,
+
+        String callCharge,
+
+        String countryName
+
+) {
+
+    public static CallHistoryResponse from(
+            CallHistory call
+    ) {
+
+        double minutes = 0;
+
+        if (call.getDurationSeconds() != null) {
+            minutes =
+                    call.getDurationSeconds() / 60.0;
         }
 
-        if (call.getUser() != null) {
-            response.setUserId(
-                    call.getUser().getId()
-            );
+        return new CallHistoryResponse(
 
-            response.setEmployeeCode(
-                    call.getUser().getEmployeeCode()
-            );
-        }
+                call.getId(),
 
-        response.setCallSid(call.getCallSid());
+                call.getClient() != null
+                        ? call.getClient().getId()
+                        : null,
 
-        response.setFromNumber(
-                call.getFromNumber()
-        );
+                call.getClient() != null
+                        ? call.getClient().getName()
+                        : null,
 
-        response.setToNumber(
-                call.getToNumber()
-        );
+                call.getUser() != null
+                        ? call.getUser().getId()
+                        : null,
 
-        response.setAgentId(
-                call.getAgentId()
-        );
+                call.getUser() != null
+                        ? call.getUser().getEmployeeCode()
+                        : null,
 
-        response.setCallType(
-                call.getCallType()
-        );
+                getEmployeeName(call),
 
-        response.setStatus(
-                call.getStatus()
-        );
+                call.getAgentId(),
 
-        response.setDuration(
-                call.getDuration()
-        );
+                call.getCallSid(),
 
-        response.setDurationSeconds(
-                call.getDurationSeconds()
-        );
+                call.getCallType(),
 
-        response.setRecordingUrl(
-                call.getRecordingUrl()
-        );
+                call.getStatus(),
 
-        response.setHangupBy(
-                call.getHangupBy()
-        );
+                call.getFromNumber(),
 
-        response.setAnsweredDevice(
-                call.getAnsweredDevice()
-        );
+                call.getToNumber(),
 
-        response.setBilledMinutes(
-                call.getBilledMinutes()
-        );
+                call.getDuration(),
 
-        response.setCallCharge(
-                call.getCallCharge()
-        );
+                call.getDurationSeconds(),
 
-        response.setCountryName(
+                minutes,
+
+                call.getCallTime(),
+
+                call.getStartTime(),
+
+                call.getEndTime(),
+
+                call.getRecordingUrl(),
+
+                call.getHangupBy(),
+
+                call.getAnsweredDevice(),
+
+                call.getBilledMinutes(),
+
+                call.getCallCharge(),
+
                 call.getCountryName()
         );
+    }
 
-        response.setCallTime(
-                call.getCallTime()
-        );
 
-        response.setStartTime(
-                call.getStartTime()
-        );
+    private static String getEmployeeName(
+            CallHistory call
+    ) {
 
-        response.setEndTime(
-                call.getEndTime()
-        );
+        if (call.getUser() == null) {
+            return null;
+        }
 
-        return response;
+        String first =
+                call.getUser().getFirstName();
+
+        String last =
+                call.getUser().getLastName();
+
+        if (last == null || last.isBlank()) {
+            return first;
+        }
+
+        return first + " " + last;
     }
 }

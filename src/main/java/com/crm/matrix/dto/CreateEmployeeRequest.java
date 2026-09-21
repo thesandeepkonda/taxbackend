@@ -49,4 +49,10 @@ public class CreateEmployeeRequest {
 
     @NotNull(message = "Work mode is required")
     private WorkMode workMode;
+
+    private String callHippoApiToken;
+
+    private String callHippoFromNumber;
+
+    private String callHippoAgentId;
 }

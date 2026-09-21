@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -117,6 +118,12 @@ public class User extends BaseEntity {
             length = 30
     )
     private WorkMode workMode;
+
+    @Column(name = "reset_otp", length = 6)
+    private String resetOtp;
+
+    @Column(name = "reset_otp_expiry")
+    private LocalDateTime resetOtpExpiry;
     @OneToMany(
             mappedBy = "user",
             fetch = FetchType.LAZY
