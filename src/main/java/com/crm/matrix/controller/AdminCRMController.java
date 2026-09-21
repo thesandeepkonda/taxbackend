@@ -51,7 +51,9 @@ public class AdminCRMController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "assignedAt"));
+        // CORRECTED: Changed "assignedAt" to "createdAt" because the Client table does not have assignedAt.
+        // This ensures unassigned clients can be fetched and sorted properly.
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         return ResponseEntity.ok(adminCRMService.getClients(stage, pageable));
     }

@@ -341,16 +341,16 @@ public class AdminCRMService {
 
     @Transactional(readOnly = true)
     public Page<AdminClientResponseDto> getClients(String stage, Pageable pageable) {
+        Page<Client> clientPage;
 
-        // If a stage (e.g., DOC, PREP, NEW) is provided, filter by it
+        // If a stage is provided, filter by it; otherwise, fetch all clients (including unassigned)
         if (stage != null && !stage.trim().isEmpty()) {
-            return assignmentRepository.findActiveAssignmentsByClientStage(stage.trim(), pageable)
-                    .map(this::mapAssignmentToClientResponse); // Uses your existing mapping[cite: 2]
+            clientPage = clientRepository.findAllClientsByStage(stage.trim(), pageable);
+        } else {
+            clientPage = clientRepository.findAll(pageable);
         }
 
-        // Otherwise, return all active assignments[cite: 2]
-        return assignmentRepository.findAllActiveAssignmentsWithDetails(pageable)
-                .map(this::mapAssignmentToClientResponse);
+        return clientPage.map(this::mapClient);
     }
     private AdminClientResponseDto mapAssignmentToClientResponse(ClientAssignment assignment) {
         Client client = assignment.getClient();
