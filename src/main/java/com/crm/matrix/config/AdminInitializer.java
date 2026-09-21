@@ -1,3 +1,4 @@
+
 package com.crm.matrix.config;
 
 import com.crm.matrix.entity.AttendancePolicy;
@@ -39,7 +40,6 @@ public class AdminInitializer implements CommandLineRunner {
 
     private final PasswordEncoder passwordEncoder;
 
-
     @Override
     @Transactional
     public void run(String... args) {
@@ -48,33 +48,29 @@ public class AdminInitializer implements CommandLineRunner {
         // 1. CREATE / GET ADMIN ROLE
         // =========================================================
 
-        Role adminRole = roleRepository.findByName("ADMIN").orElseGet(() -> {
+        Role adminRole = roleRepository.findByName("ADMIN")
+                .orElseGet(() -> {
 
-            Role role = new Role();
+                    Role role = new Role();
 
-            role.setName("ADMIN");
+                    role.setName("ADMIN");
+                    role.setDescription("System Administrator");
+                    role.setActive(true);
+                    role.setPermissions(new HashSet<>());
 
-            role.setDescription("System Administrator");
+                    System.out.println("ADMIN role created.");
 
-            role.setActive(true);
-
-            role.setPermissions(new HashSet<>());
-
-            System.out.println("ADMIN role created.");
-
-            return roleRepository.save(role);
-        });
-
+                    return roleRepository.save(role);
+                });
 
         // =========================================================
         // 2. SYNCHRONIZE ALL PERMISSIONS TO ADMIN
         // =========================================================
 
-        Set<Permission> allPermissions = new HashSet<>(permissionRepository.findAll());
-
+        Set<Permission> allPermissions =
+                new HashSet<>(permissionRepository.findAll());
 
         Set<Permission> adminPermissions = adminRole.getPermissions();
-
 
         if (adminPermissions == null) {
 
@@ -83,16 +79,13 @@ public class AdminInitializer implements CommandLineRunner {
             adminRole.setPermissions(adminPermissions);
         }
 
-
         boolean permissionsChanged = false;
-
 
         for (Permission permission : allPermissions) {
 
             if (permission == null) {
                 continue;
             }
-
 
             if (!adminPermissions.contains(permission)) {
 
@@ -102,7 +95,6 @@ public class AdminInitializer implements CommandLineRunner {
             }
         }
 
-
         if (permissionsChanged) {
 
             roleRepository.save(adminRole);
@@ -110,48 +102,61 @@ public class AdminInitializer implements CommandLineRunner {
             System.out.println("ADMIN permissions synchronized.");
         }
 
-
         // =========================================================
         // 3. CREATE / GET SYSTEM DEPARTMENT
         // =========================================================
 
-        Department systemDepartment = departmentRepository.findByNameIgnoreCase("SYSTEM").orElseGet(() -> {
+        Department systemDepartment =
+                departmentRepository.findByNameIgnoreCase("SYSTEM")
+                        .orElseGet(() -> {
 
-            Department department = new Department();
+                            Department department = new Department();
 
-            department.setName("SYSTEM");
+                            department.setName("SYSTEM");
 
-            department.setDescription("System administration department");
+                            department.setDescription(
+                                    "System administration department"
+                            );
 
-            department.setActive(true);
+                            department.setActive(true);
 
-            System.out.println("SYSTEM department created.");
+                            System.out.println("SYSTEM department created.");
 
-            return departmentRepository.save(department);
-        });
-
+                            return departmentRepository.save(department);
+                        });
 
         // =========================================================
         // 4. CREATE / GET SYSTEM ATTENDANCE POLICY
         // =========================================================
 
-        AttendancePolicy systemAttendancePolicy = attendancePolicyRepository.findByNameIgnoreCase("SYSTEM_ADMIN_POLICY").orElseGet(() -> {
+        AttendancePolicy systemAttendancePolicy =
+                attendancePolicyRepository
+                        .findByNameIgnoreCase("SYSTEM_ADMIN_POLICY")
+                        .orElseGet(() -> {
 
-            AttendancePolicy policy = new AttendancePolicy();
+                            AttendancePolicy policy = new AttendancePolicy();
 
-            policy.setName("SYSTEM_ADMIN_POLICY");
+                            policy.setName("SYSTEM_ADMIN_POLICY");
 
-            policy.setStartTime(LocalTime.of(0, 0));
+                            policy.setStartTime(LocalTime.of(0, 0));
 
-            policy.setEndTime(LocalTime.of(23, 59));
+                            policy.setEndTime(LocalTime.of(23, 59));
 
-            policy.setActive(true);
+                            policy.setWorkingDays(
+                                    "MON,TUE,WED,THU,FRI,SAT,SUN"
+                            );
 
-            System.out.println("SYSTEM_ADMIN_POLICY created.");
+                            // FIX: Set the required break allowance.
+                            policy.setAllowedBreakMinutes(0);
 
-            return attendancePolicyRepository.save(policy);
-        });
+                            policy.setActive(true);
 
+                            System.out.println(
+                                    "SYSTEM_ADMIN_POLICY created."
+                            );
+
+                            return attendancePolicyRepository.save(policy);
+                        });
 
         // =========================================================
         // 5. CREATE / GET ADMIN USER
@@ -159,9 +164,9 @@ public class AdminInitializer implements CommandLineRunner {
 
         String adminEmployeeCode = "ADMIN001";
 
-
-        User admin = userRepository.findByEmployeeCode(adminEmployeeCode).orElse(null);
-
+        User admin = userRepository
+                .findByEmployeeCode(adminEmployeeCode)
+                .orElse(null);
 
         // =========================================================
         // 6. CREATE ADMIN IF NOT EXISTS
@@ -181,23 +186,20 @@ public class AdminInitializer implements CommandLineRunner {
 
             admin.setPhone("9999999999");
 
-
             // -----------------------------------------------------
             // INITIAL PASSWORD
             // -----------------------------------------------------
 
             String initialPassword = "Admin@12345";
 
-
-            admin.setPassword(passwordEncoder.encode(initialPassword));
-
+            admin.setPassword(
+                    passwordEncoder.encode(initialPassword)
+            );
 
             admin.setActive(true);
 
-
             System.out.println("Creating initial ADMIN user...");
         }
-
 
         // =========================================================
         // 7. ADMIN ORGANIZATION
@@ -205,21 +207,16 @@ public class AdminInitializer implements CommandLineRunner {
 
         admin.setRole(adminRole);
 
-
         admin.setDepartment(systemDepartment);
 
-
-        // ADMIN does not belong to a normal team
-
+        // ADMIN does not belong to a normal team.
         admin.setTeam(null);
-
 
         // =========================================================
         // 8. ADMIN ATTENDANCE CONFIGURATION
         // =========================================================
 
         admin.setAttendancePolicy(systemAttendancePolicy);
-
 
         /*
          * ADMIN is treated as an office/system user.
@@ -229,13 +226,11 @@ public class AdminInitializer implements CommandLineRunner {
 
         admin.setWorkMode(WorkMode.OFFICE);
 
-
         // =========================================================
         // 9. SAVE ADMIN
         // =========================================================
 
         userRepository.save(admin);
-
 
         // =========================================================
         // 10. LOG
