@@ -13,5 +13,4 @@ public class GroupMemberDto {
     private Long userId;
     private String name;
     private String employeeCode;
-    // Add other fields you might need (e.g., profilePictureUrl, role, etc.)
 }

@@ -1,5 +1,7 @@
 package com.crm.matrix.dto;
 
+import com.crm.matrix.enums.Department;
+import com.crm.matrix.enums.Role;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;
 import lombok.Getter;
@@ -23,18 +25,19 @@ public class CreateEmployeeResponse {
 
     private String phone;
 
-    private Long departmentId;
-
     private String departmentName;
+    private String roleName;
+
+
 
     private Long teamId;
 
     private String teamName;
 
-    private Long roleId;
 
-    private String roleName;
 
+    private Department department;
+    private Role role;
     private String temporaryPassword;
 
     private Boolean active;

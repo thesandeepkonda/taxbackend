@@ -35,6 +35,7 @@ public class Permission extends BaseEntity {
     @Column(nullable = false)
     private Boolean active = true;
 
+
     @ManyToMany(mappedBy = "permissions")
-    private Set<Role> roles = new HashSet<>();
+    private Set<User> users = new HashSet<>();
 }

@@ -130,8 +130,8 @@ public class ChatSidebarService {
                 .map(user -> ChatContactDto.builder()
                         .id(user.getId())
                         .name(user.getFirstName() + (user.getLastName() != null ? " " + user.getLastName() : ""))
-                        .departmentName(user.getDepartment() != null ? user.getDepartment().getName() : "")
-                        .roleName(user.getRole() != null ? user.getRole().getName() : "")
+                        .departmentName(user.getDepartment() != null ? user.getDepartment().name() : "") // Enum mapping fix
+                        .roleName(user.getRole() != null ? user.getRole().name() : "")                   // Enum mapping fix
                         .isOnline(WebSocketEventListener.isUserOnline(user.getEmployeeCode()))
                         .build())
                 .collect(Collectors.toList());
@@ -169,4 +169,97 @@ public class ChatSidebarService {
                 Map.of("unreadCount", unreadCount)
         );
     }
+    @Transactional(readOnly = true)
+    public List<ChatContactDto> getAllEmployeesForAdmin() {
+        return userRepository.findByActiveTrue().stream()
+                .map(user -> ChatContactDto.builder()
+                        .id(user.getId())
+                        .name(user.getFirstName() + (user.getLastName() != null ? " " + user.getLastName() : ""))
+                        .departmentName(user.getDepartment() != null ? user.getDepartment().name() : "")
+                        .roleName(user.getRole() != null ? user.getRole().name() : "")
+                        .isOnline(WebSocketEventListener.isUserOnline(user.getEmployeeCode()))
+                        .build())
+                .collect(Collectors.toList());
+    }
+//    @Transactional(readOnly = true)
+//    public List<SidebarConversationDto> getSidebarConversations(Authentication authentication) {
+//        User currentUser = userRepository.findByEmployeeCode(authentication.getName())
+//                .orElseThrow(() -> new RuntimeException("User not found"));
+//        return buildSidebarConversations(currentUser.getId());
+//    }
+    @Transactional(readOnly = true)
+    public List<SidebarConversationDto> getAdminViewOfEmployeeConversations(Long employeeId) {
+        User targetEmployee = userRepository.findById(employeeId)
+                .orElseThrow(() -> new RuntimeException("Employee not found"));
+        return buildSidebarConversations(targetEmployee.getId());
+    }
+    private List<SidebarConversationDto> buildSidebarConversations(Long targetUserId) {
+        List<SidebarConversationDto> conversations = new ArrayList<>();
+
+        // 1. Fetch Direct Individual Chats
+        List<ChatMessage> directMessages = chatMessageRepository.findAllDirectMessagesForUser(targetUserId);
+        Map<Long, ChatMessage> latestDm = new HashMap<>();
+
+        for (ChatMessage msg : directMessages) {
+            if (msg.getRecipient() == null || msg.getSender() == null) continue;
+
+            Long partnerId = msg.getSender().getId().equals(targetUserId)
+                    ? msg.getRecipient().getId()
+                    : msg.getSender().getId();
+            latestDm.putIfAbsent(partnerId, msg);
+        }
+
+        for (Map.Entry<Long, ChatMessage> entry : latestDm.entrySet()) {
+            User partner = userRepository.findById(entry.getKey()).orElse(null);
+            if (partner == null) continue;
+
+            ChatMessage msg = entry.getValue();
+            String partnerName = partner.getFirstName() + (partner.getLastName() != null ? " " + partner.getLastName() : "");
+            boolean isOnline = WebSocketEventListener.isUserOnline(partner.getEmployeeCode());
+
+            int unreadCount = chatMessageRepository.countBySenderIdAndRecipientIdAndIsReadFalse(partner.getId(), targetUserId);
+
+            conversations.add(SidebarConversationDto.builder()
+                    .id(partner.getId())
+                    .name(partnerName)
+                    .type("INDIVIDUAL")
+                    .updatedAt(msg.getCreatedAt())
+                    .unreadCount(unreadCount)
+                    .isOnline(isOnline)
+                    .build());
+        }
+
+        // 2. Fetch Group Chats
+        List<ChatGroupMember> userMemberships = groupMemberRepository.findByUserId(targetUserId);
+
+        for (ChatGroupMember membership : userMemberships) {
+            ChatGroup group = membership.getGroup();
+            ChatMessage latestGroupMsg = chatMessageRepository.findTopByGroupIdOrderByCreatedAtDesc(group.getId()).orElse(null);
+
+            LocalDateTime groupActivityTime = latestGroupMsg != null
+                    ? latestGroupMsg.getCreatedAt()
+                    : group.getCreatedAt();
+
+            int unreadGroupCount = chatMessageRepository.countUnreadGroupMessages(group.getId(), membership.getLastReadAt());
+
+            conversations.add(SidebarConversationDto.builder()
+                    .id(group.getId())
+                    .name(group.getName())
+                    .type("GROUP")
+                    .updatedAt(groupActivityTime)
+                    .unreadCount(unreadGroupCount)
+                    .isOnline(null)
+                    .build());
+        }
+
+        // 3. Sort descending by updatedAt
+        conversations.sort((a, b) -> {
+            LocalDateTime timeA = a.getUpdatedAt() != null ? a.getUpdatedAt() : LocalDateTime.MIN;
+            LocalDateTime timeB = b.getUpdatedAt() != null ? b.getUpdatedAt() : LocalDateTime.MIN;
+            return timeB.compareTo(timeA);
+        });
+
+        return conversations;
+    }
+
 }

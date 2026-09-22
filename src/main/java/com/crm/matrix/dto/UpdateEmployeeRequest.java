@@ -1,5 +1,7 @@
 package com.crm.matrix.dto;
 
+import com.crm.matrix.enums.Department;
+import com.crm.matrix.enums.Role;
 import com.crm.matrix.enums.WorkMode;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -30,11 +32,10 @@ public class UpdateEmployeeRequest {
     private String phone;
 
     @NotNull(message = "Department is required")
-    private Long departmentId;
-
+    private Department department;
+    private Role role;
     private Long teamId;
 
-    private Long roleId;
 
     @NotNull(message = "Active status is required")
     private Boolean active;

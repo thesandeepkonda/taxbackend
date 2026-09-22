@@ -1,5 +1,6 @@
 package com.crm.matrix.dto;
 
+import com.crm.matrix.enums.Department;
 import com.crm.matrix.enums.EventTargetType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -27,8 +28,11 @@ public class CreateEventRequest {
 
     @NotNull(message = "Target type is required")
     private EventTargetType targetType;
+
     @Size(max = 1000, message = "Meeting link cannot exceed 1000 characters")
     private String meetingLink;
 
-    private Long targetId; // Required if targetType is INDIVIDUAL, TEAM, or DEPARTMENT
+    private Long targetId; // Required if targetType is INDIVIDUAL or TEAM
+
+    private Department targetDepartment; // Required if targetType is DEPARTMENT
 }

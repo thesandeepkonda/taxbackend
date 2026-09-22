@@ -54,7 +54,6 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
-                        .requestMatchers( "/document-upload/**").permitAll()
                         .requestMatchers("/api/callhippo/webhook").permitAll()
                         .requestMatchers("/api/users/forgot-password").permitAll()
                         .requestMatchers("/api/users/reset-password").permitAll()

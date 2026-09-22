@@ -54,7 +54,7 @@ public class PermissionInitializer implements CommandLineRunner {
                 "PASSWORD_CHANGE",
 
                 // AUDIT
-                "AUDIT_LOG_READ");
+                "AUDIT_LOG_READ","LEAVE_REQUEST","EVENT_CREATE","PASSWORD_CHANGE");
 
         for (String code : permissions) {
 

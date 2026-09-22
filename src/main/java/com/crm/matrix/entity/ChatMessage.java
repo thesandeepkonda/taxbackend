@@ -71,10 +71,10 @@ public class ChatMessage extends BaseEntity {
     @Column(name = "reaction", length = 50)
     private java.util.Map<Long, String> reactions = new java.util.HashMap<>();
 
+    @ElementCollection(fetch = FetchType.EAGER) // ---> ADD THIS ANNOTATION <---
     @CollectionTable(name = "chat_message_cleared", joinColumns = @JoinColumn(name = "message_id"))
     @Column(name = "user_id")
     private java.util.Set<Long> clearedBy = new java.util.HashSet<>();
-
     private Boolean isPinned = false;
 
 }

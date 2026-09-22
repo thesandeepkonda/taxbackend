@@ -3,6 +3,7 @@ package com.crm.matrix.controller;
 
 import com.crm.matrix.dto.ChatMessageDto;
 import com.crm.matrix.dto.GroupMembersResponseDto;
+import com.crm.matrix.dto.SendMessageRequest;
 import com.crm.matrix.repository.ChatGroupMemberRepository;
 import com.crm.matrix.repository.ChatGroupRepository;
 import com.crm.matrix.repository.ChatMessageRepository;
@@ -207,5 +208,30 @@ public class chatsController {
         List<ChatMessageDto> pinned = chatService.getPinnedMessages(partnerId, groupId, authentication);
         return ResponseEntity.ok(pinned);
     }
+    @PostMapping("/api/chat/messages")
+    public ResponseEntity<ChatMessageDto> sendTextMessage(
+            @RequestBody SendMessageRequest request,
+            Authentication authentication) {
+
+        if (request.getRecipientId() == null && request.getGroupId() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        if (request.getContent() == null || request.getContent().trim().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        ChatMessageDto sentMessage = chatService.sendTextMessage(
+                request.getRecipientId(),
+                request.getGroupId(),
+                request.getContent(),
+                request.getReplyToId(),
+                request.getIsForwarded(),
+                authentication
+        );
+
+        return ResponseEntity.ok(sentMessage);
+    }
+
 
 }

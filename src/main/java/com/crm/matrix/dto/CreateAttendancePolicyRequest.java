@@ -1,27 +1,33 @@
 package com.crm.matrix.dto;
 
-import jakarta.validation.constraints.Min;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+
 import java.time.LocalTime;
 
 @Getter
 @Setter
 public class CreateAttendancePolicyRequest {
+
     @NotBlank(message = "Policy name is required")
+    @Size(max = 100, message = "Name cannot exceed 100 characters")
     private String name;
 
     @NotNull(message = "Start time is required")
+    @JsonFormat(pattern = "H:mm") // Handles both "9:00" and "09:00"
     private LocalTime startTime;
 
     @NotNull(message = "End time is required")
+    @JsonFormat(pattern = "H:mm") // Handles single-digit hours like "5:00"
     private LocalTime endTime;
 
     @NotNull(message = "Allowed break minutes is required")
-    @Min(value = 0, message = "Allowed break minutes cannot be negative")
     private Integer allowedBreakMinutes;
-    @NotBlank(message = "Working days are required (e.g., 'Mon - Fri')")
+
+    @Size(max = 50, message = "Working days description cannot exceed 50 characters")
     private String workingDays;
 }

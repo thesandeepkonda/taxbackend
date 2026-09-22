@@ -1,5 +1,6 @@
 package com.crm.matrix.entity;
 
+import com.crm.matrix.enums.Department;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -20,11 +21,9 @@ public class Team extends BaseEntity {
     @Column(nullable = false, length = 100)
     private String name;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "department_id",
-            nullable = false
-    )
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "department", nullable = false)
     private Department department;
 
     @ManyToOne(fetch = FetchType.LAZY)

@@ -33,15 +33,15 @@ public interface ClientRepository
     Page<Client> findByStatus(
             ClientStatus status,
             Pageable pageable
-    );
+    );   
     List<Client> findByStatusOrderByCreatedAtDesc(
             ClientStatus status
     );
 
 
-    //Optional<Client> findByUserId(Long id);
-    @Query("SELECT c FROM Client c WHERE NOT EXISTS (SELECT a FROM ClientAssignment a WHERE a.client = c AND a.active = true)")
-    Page<Client> findUnassignedClients(Pageable pageable);
+     //Optional<Client> findByUserId(Long id);
+     @Query("SELECT c FROM Client c WHERE NOT EXISTS (SELECT a FROM ClientAssignment a WHERE a.client = c AND a.active = true)")
+     Page<Client> findUnassignedClients(Pageable pageable);
 
     @Query("SELECT c FROM Client c WHERE c.currentStage = :stage")
     Page<Client> findAllClientsByStage(@Param("stage") String stage, Pageable pageable);}

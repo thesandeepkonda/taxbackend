@@ -31,7 +31,7 @@ public class AttendancePolicy extends BaseEntity {
 
     // The new flexible daily allowance
     @Column(name = "allowed_break_minutes", nullable = false)
-    private Integer allowedBreakMinutes = 60;
+    private Integer allowedBreakMinutes;
 
     @Column(nullable = false)
     private Boolean active = true;

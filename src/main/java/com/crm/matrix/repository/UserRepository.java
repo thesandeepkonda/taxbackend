@@ -1,20 +1,21 @@
 package com.crm.matrix.repository;
 
 import com.crm.matrix.entity.User;
+import com.crm.matrix.enums.Department;
+import com.crm.matrix.enums.Role;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
-    @EntityGraph(attributePaths = {"role", "role.permissions", "department", "team"})
+    // ✅ FIX: Added "permissions" to attributePaths
+    @EntityGraph(attributePaths = {"team", "permissions"})
     Optional<User> findByEmployeeCode(String employeeCode);
 
     boolean existsByEmployeeCode(String employeeCode);
@@ -25,39 +26,29 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("""
         SELECT u FROM User u 
-        JOIN FETCH u.role r 
-        LEFT JOIN FETCH u.department d 
         LEFT JOIN FETCH u.team t 
-        WHERE r.name = 'TEAM_LEAD' 
+        WHERE u.role = com.crm.matrix.enums.Role.TEAM_LEAD 
         AND u.active = true
     """)
     List<User> findAllTeamLeads();
 
     Page<User> findByActive(boolean active, Pageable pageable);
 
-    List<User> findByDepartmentIdAndActiveTrue(Long departmentId);
+    List<User> findByDepartmentAndActiveTrue(Department department);
 
     List<User> findByActiveTrue();
 
     List<User> findByTeamId(Long teamId);
 
-    @Query("""
-        SELECT u FROM User u 
-        JOIN FETCH u.role r 
-        WHERE r.name = :roleName 
-        AND u.active = true
-    """)
-    List<User> findByRoleNameAndActiveTrue(@Param("roleName") String roleName);
+    // ✅ FIX: Added "permissions" here as well if you use email for login anywhere
+    @EntityGraph(attributePaths = {"team", "permissions"})
+    Optional<User> findByEmail(String email);
 
-    Optional<User> findByEmail(
-            String email
-    );
+    Optional<User> findByCallHippoAgentId(String callHippoAgentId);
 
-
-
-    Optional<User> findByCallHippoAgentId(
-            String callHippoAgentId
-    );
     long countByActiveTrue();
+
     long countByTeamIdAndActiveTrue(Long teamId);
+
+    List<User> findByRoleAndActiveTrue(Role role);
 }

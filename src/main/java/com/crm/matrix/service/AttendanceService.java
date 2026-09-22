@@ -5,6 +5,7 @@ import com.crm.matrix.entity.*;
 import com.crm.matrix.enums.AttendanceStatus;
 import com.crm.matrix.enums.LeaveRequestStatus;
 import com.crm.matrix.enums.LeaveType;
+import com.crm.matrix.enums.Role;
 import com.crm.matrix.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -25,8 +26,7 @@ public class AttendanceService {
     private final AttendanceBreakRepository attendanceBreakRepository;
     private final UserRepository userRepository;
     private final AttendanceIdleRepository attendanceIdleRepository;
-    private final LeaveRequestRepository leaveRequestRepository; // Ensure this is injected in your constructor
-
+    private final LeaveRequestRepository leaveRequestRepository;
 
     @Transactional
     public AttendanceResponse checkIn(String employeeCode) {
@@ -222,9 +222,6 @@ public class AttendanceService {
     // =========================================================
     // HELPERS & RESPONSE MAPPING
     // =========================================================
-// =========================================================
-    // HELPERS & RESPONSE MAPPING
-    // =========================================================
     private AttendanceResponse mapToResponse(Attendance attendance) {
         // Fetch active break/idle to calculate live durations
         var activeBreakOpt = attendanceBreakRepository.findByAttendanceIdAndEndTimeIsNull(attendance.getId());
@@ -288,16 +285,26 @@ public class AttendanceService {
             fullName += " " + employee.getLastName();
         }
 
-        return AttendanceResponse.builder().id(attendance.getId()).employeeId(attendance.getUser().getId()).employeeCode(attendance.getUser().getEmployeeCode()).employeeName(fullName).attendanceDate(attendance.getAttendanceDate()).checkIn(attendance.getCheckIn()).checkOut(attendance.getCheckOut()).status(attendance.getStatus()).totalWorkMinutes(liveWorkMinutes)    // Returns live work minutes
+        return AttendanceResponse.builder()
+                .id(attendance.getId())
+                .employeeId(attendance.getUser().getId())
+                .employeeCode(attendance.getUser().getEmployeeCode())
+                .employeeName(fullName)
+                .attendanceDate(attendance.getAttendanceDate())
+                .checkIn(attendance.getCheckIn())
+                .checkOut(attendance.getCheckOut())
+                .status(attendance.getStatus())
+                .totalWorkMinutes(liveWorkMinutes)    // Returns live work minutes
                 .totalBreakMinutes(liveBreakMinutes)  // Returns live break minutes
                 .totalIdleMinutes(liveIdleMinutes)    // Returns live idle minutes
-                .breakActive(breakActive).policyViolation(violation).isLate(late).isEarlyCheckout(earlyCheckout).build();
+                .breakActive(breakActive)
+                .policyViolation(violation)
+                .isLate(late)
+                .isEarlyCheckout(earlyCheckout)
+                .build();
     }
 
 
-    // =========================================================
-    // TEAM ATTENDANCE HELPER
-    // =========================================================
     // =========================================================
     // TEAM ATTENDANCE HELPER
     // =========================================================
@@ -315,7 +322,25 @@ public class AttendanceService {
         // Dynamically pull working days from the database
         String dynamicWorkingDays = (policy != null && policy.getWorkingDays() != null) ? policy.getWorkingDays() : "Not Assigned";
 
-        return TeamAttendanceResponse.builder().id(base.getId()).employeeId(base.getEmployeeId()).employeeCode(base.getEmployeeCode()).employeeName(base.getEmployeeName()).attendanceDate(base.getAttendanceDate()).checkIn(base.getCheckIn()).checkOut(base.getCheckOut()).status(base.getStatus()).totalWorkMinutes(base.getTotalWorkMinutes()).totalBreakMinutes(base.getTotalBreakMinutes()).totalIdleMinutes(base.getTotalIdleMinutes()).breakActive(base.isBreakActive()).policyViolation(base.isPolicyViolation()).isLate(base.isLate()).isEarlyCheckout(base.isEarlyCheckout()).shiftStartTime(policy != null ? policy.getStartTime() : null).shiftEndTime(policy != null ? policy.getEndTime() : null).workingDays(dynamicWorkingDays) // <-- NOW 100% DYNAMIC
+        return TeamAttendanceResponse.builder()
+                .id(base.getId())
+                .employeeId(base.getEmployeeId())
+                .employeeCode(base.getEmployeeCode())
+                .employeeName(base.getEmployeeName())
+                .attendanceDate(base.getAttendanceDate())
+                .checkIn(base.getCheckIn())
+                .checkOut(base.getCheckOut())
+                .status(base.getStatus())
+                .totalWorkMinutes(base.getTotalWorkMinutes())
+                .totalBreakMinutes(base.getTotalBreakMinutes())
+                .totalIdleMinutes(base.getTotalIdleMinutes())
+                .breakActive(base.isBreakActive())
+                .policyViolation(base.isPolicyViolation())
+                .isLate(base.isLate())
+                .isEarlyCheckout(base.isEarlyCheckout())
+                .shiftStartTime(policy != null ? policy.getStartTime() : null)
+                .shiftEndTime(policy != null ? policy.getEndTime() : null)
+                .workingDays(dynamicWorkingDays) // <-- NOW 100% DYNAMIC
                 .currentStatus(currentStatus).build();
     }
 
@@ -420,87 +445,6 @@ public class AttendanceService {
     }
 
     // =========================================================
-    // GET ALL ABSENTEES BY DATE (ABSENT + ON LEAVE)
-    // =========================================================
-    // =========================================================
-    // GET ALL ABSENTEES BY DATE (ABSENT + ON LEAVE)
-    // =========================================================
-//    @Transactional(readOnly = true)
-//    public List<UserResponseDto> getAllAbsenteesByDate(LocalDate date) {
-//        LocalDate targetDate = (date != null) ? date : LocalDate.now();
-//        LocalTime currentTime = LocalTime.now();
-//        boolean isToday = targetDate.equals(LocalDate.now());
-//
-//        // 1. Get all active non-admin employees
-//        List<User> allActiveUsers = userRepository.findByActiveTrue()
-//                .stream()
-//                .filter(user -> user.getRole() == null || !"ADMIN".equalsIgnoreCase(user.getRole().getName()))
-//                .toList();
-//
-//        // 2. Get IDs of employees who checked in on this date
-//        List<Long> presentUserIds = attendanceRepository.findByAttendanceDate(targetDate)
-//                .stream()
-//                .map(att -> att.getUser().getId())
-//                .toList();
-//
-//        // 3. Get approved leaves that cover the target date safely
-//        List<LeaveRequest> approvedLeaves = leaveRequestRepository.findAll().stream()
-//                .filter(leave -> leave.getStatus() == LeaveRequestStatus.APPROVED)
-//                .filter(leave -> !leave.getFromDate().isAfter(targetDate) && !leave.getToDate().isBefore(targetDate))
-//                .toList();
-//
-//        java.util.Map<Long, LeaveType> leaveTypeMap = new java.util.HashMap<>();
-//        for (LeaveRequest leave : approvedLeaves) {
-//            if (leave.getUser() != null) {
-//                leaveTypeMap.put(leave.getUser().getId(), leave.getLeaveType());
-//            }
-//        }
-//
-//        List<UserResponseDto> absentees = new java.util.ArrayList<>();
-//
-//        for (User user : allActiveUsers) {
-//            // Skip if they are present
-//            if (presentUserIds.contains(user.getId())) {
-//                continue;
-//            }
-//
-//            // For today, check if their shift start time has arrived (unless they are on approved leave)
-//            boolean shiftStarted = true;
-//            boolean isOnLeave = leaveTypeMap.containsKey(user.getId());
-//
-//            if (isToday && user.getAttendancePolicy() != null && user.getAttendancePolicy().getStartTime() != null) {
-//                if (currentTime.isBefore(user.getAttendancePolicy().getStartTime())) {
-//                    shiftStarted = false;
-//                }
-//            }
-//
-//            // If shift hasn't started yet AND they are not on leave, don't flag them yet
-//            if (!shiftStarted && !isOnLeave) {
-//                continue;
-//            }
-//
-//            // Determine status and leave type explicitly
-//            AttendanceStatus status = isOnLeave ? AttendanceStatus.ON_LEAVE : AttendanceStatus.ABSENT;
-//            LeaveType leaveType = isOnLeave ? leaveTypeMap.get(user.getId()) : null;
-//
-//            absentees.add(UserResponseDto.builder()
-//                    .id(user.getId())
-//                    .employeeCode(user.getEmployeeCode())
-//                    .firstName(user.getFirstName())
-//                    .lastName(user.getLastName())
-//                    .email(user.getEmail())
-//                    .phone(user.getPhone())
-//                    .departmentName(user.getDepartment() != null ? user.getDepartment().getName() : "No Department")
-//                    .teamName(user.getTeam() != null ? user.getTeam().getName() : "Unassigned")
-//                    .attendanceStatus(status)
-//                    .leaveType(leaveType)
-//                    .build());
-//        }
-//
-//        return absentees;
-//    }
-
-    // =========================================================
     // GET ALL COMPANY ATTENDANCE BY DATE (ALL DYNAMIC STATUSES)
     // =========================================================
     @Transactional(readOnly = true)
@@ -509,8 +453,11 @@ public class AttendanceService {
         LocalTime currentTime = LocalTime.now();
         boolean isToday = targetDate.equals(LocalDate.now());
 
-        // 1. Get all active non-admin employees
-        List<User> allActiveUsers = userRepository.findByActiveTrue().stream().filter(user -> user.getRole() == null || !"ADMIN".equalsIgnoreCase(user.getRole().getName())).toList();
+        // 1. Get all active non-admin employees using the Role Enum
+        List<User> allActiveUsers = userRepository.findByActiveTrue()
+                .stream()
+                .filter(user -> user.getRole() != Role.ADMIN)
+                .toList();
 
         // 2. Get all attendance records for this date
         List<Attendance> attendances = attendanceRepository.findByAttendanceDate(targetDate);
@@ -614,7 +561,22 @@ public class AttendanceService {
                 finalStatus = AttendanceStatus.ABSENT;
             }
 
-            result.add(AdminDailyAttendanceDto.builder().employeeId(user.getId()).employeeCode(user.getEmployeeCode()).firstName(user.getFirstName()).lastName(user.getLastName()).email(user.getEmail()).phone(user.getPhone()).departmentName(user.getDepartment() != null ? user.getDepartment().getName() : "No Department").teamName(user.getTeam() != null ? user.getTeam().getName() : "Unassigned").attendanceStatus(finalStatus).leaveType(finalLeaveType).checkIn(checkIn).checkOut(checkOut).totalWorkMinutes(totalWorkMinutes).shiftStartTime(shiftStartTime).build());
+            result.add(AdminDailyAttendanceDto.builder()
+                    .employeeId(user.getId())
+                    .employeeCode(user.getEmployeeCode())
+                    .firstName(user.getFirstName())
+                    .lastName(user.getLastName())
+                    .email(user.getEmail())
+                    .phone(user.getPhone())
+                    .departmentName(user.getDepartment() != null ? user.getDepartment().name() : "No Department") // Enum mapping fix
+                    .teamName(user.getTeam() != null ? user.getTeam().getName() : "Unassigned")
+                    .attendanceStatus(finalStatus)
+                    .leaveType(finalLeaveType)
+                    .checkIn(checkIn)
+                    .checkOut(checkOut)
+                    .totalWorkMinutes(totalWorkMinutes)
+                    .shiftStartTime(shiftStartTime)
+                    .build());
         }
 
         // Apply the enum filter from the Controller

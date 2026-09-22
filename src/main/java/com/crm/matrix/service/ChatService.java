@@ -251,20 +251,29 @@ public class ChatService {
     public void markDirectConversationAsRead(Long partnerId, Authentication authentication) {
         User currentUser = getAuthenticatedUser(authentication);
 
-        // Update database
+        // 1. Get exact IDs of messages that are currently unread (Sent by partner, received by current user)
+        List<Long> newlyReadMessageIds = chatMessageRepository.findUnreadMessageIds(partnerId, currentUser.getId());
+
+        if (newlyReadMessageIds.isEmpty()) {
+            return; // Nothing to update or broadcast
+        }
+
+        // 2. Update database
         chatMessageRepository.markDirectMessagesAsRead(partnerId, currentUser.getId());
 
-        // Instantly clear the unread badge for the person who just opened the chat
+        // 3. Clear the unread badge for the person who just opened the chat
         chatSidebarService.broadcastLiveUnreadCount(currentUser);
 
-        // ---> NEW: BROADCAST LIVE "SEEN" RECEIPT TO THE PARTNER <---
+        // 4. ---> BROADCAST LIVE "SEEN" RECEIPT TO THE PARTNER WITH EXACT MESSAGE IDs <---
         User partner = userRepository.findById(partnerId).orElse(null);
         if (partner != null) {
             java.util.Map<String, Object> receipt = new java.util.HashMap<>();
             receipt.put("type", "DIRECT_READ");
             receipt.put("readerId", currentUser.getId());
+            receipt.put("messageIds", newlyReadMessageIds); // Frontend uses this to show blue ticks!
+            receipt.put("seenAt", LocalDateTime.now());
 
-            // Ping the partner's WebSocket so their sent messages instantly turn into "Seen" / Blue Ticks
+            // Ping the partner's WebSocket so their sent messages instantly turn into "Seen"
             messagingTemplate.convertAndSendToUser(
                     partner.getEmployeeCode(),
                     "/queue/chat-receipts",
@@ -283,19 +292,37 @@ public class ChatService {
         ChatGroupMember membership = groupMemberRepository.findByGroupIdAndUserId(groupId, currentUser.getId())
                 .orElseThrow(() -> new RuntimeException("You are not a member of this group"));
 
-        membership.setLastReadAt(LocalDateTime.now());
+        LocalDateTime previousReadAt = membership.getLastReadAt();
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1. Find exactly which message IDs the user is reading right now
+        List<Long> newlyReadMessageIds;
+        if (previousReadAt == null) {
+            newlyReadMessageIds = chatMessageRepository.findAllGroupMessageIds(groupId);
+        } else {
+            newlyReadMessageIds = chatMessageRepository.findUnreadGroupMessageIds(groupId, previousReadAt);
+        }
+
+        // 2. Update DB
+        membership.setLastReadAt(now);
         groupMemberRepository.save(membership);
 
-        // INSTANTLY CLEAR THE BADGE ON THE FRONTEND
+        // 3. Clear the unread badge on the frontend
         chatSidebarService.broadcastLiveUnreadCount(currentUser);
 
-        // ---> BROADCAST LIVE "SEEN" RECEIPT TO THE GROUP <---
+        if (newlyReadMessageIds.isEmpty()) {
+            return; // No new messages were read, prevent spamming websockets
+        }
+
+        // 4. ---> BROADCAST LIVE "SEEN" RECEIPT TO THE GROUP WITH EXACT MESSAGE IDs <---
         java.util.Map<String, Object> receipt = new java.util.HashMap<>();
         receipt.put("type", "GROUP_READ");
         receipt.put("groupId", groupId);
         receipt.put("readerId", currentUser.getId());
+        receipt.put("readerName", (currentUser.getFirstName() + " " + (currentUser.getLastName() != null ? currentUser.getLastName() : "")).trim());
+        receipt.put("messageIds", newlyReadMessageIds); // Frontend uses this to add avatars under the message!
+        receipt.put("seenAt", now);
 
-        // Cast receipt to Object to resolve the ambiguity
         messagingTemplate.convertAndSend("/topic/group/" + groupId + "/receipts", (Object) receipt);
     }
 
@@ -630,5 +657,72 @@ public class ChatService {
         }
 
         return pinnedMessages.stream().map(this::mapToDto).toList();
+    }
+
+    @Transactional
+    public ChatMessageDto sendTextMessage(Long recipientId, Long groupId, String content, Long replyToId, Boolean isForwarded, Authentication authentication) {
+        User sender = getAuthenticatedUser(authentication);
+
+        ChatMessage message = new ChatMessage();
+        message.setSender(sender);
+        message.setContent(content.trim());
+        message.setType(MessageType.TEXT);
+        message.setIsRead(false);
+        message.setIsDeleted(false);
+        message.setIsEdited(false);
+        message.setIsForwarded(Boolean.TRUE.equals(isForwarded));
+
+        // Handle Reply reference
+        if (replyToId != null) {
+            chatMessageRepository.findById(replyToId).ifPresent(message::setReplyTo);
+        }
+
+        // Handle Recipient or Group
+        if (recipientId != null) {
+            User recipient = userRepository.findById(recipientId)
+                    .orElseThrow(() -> new RuntimeException("Recipient not found"));
+            message.setRecipient(recipient);
+        } else if (groupId != null) {
+            ChatGroup group = chatGroupRepository.findById(groupId)
+                    .orElseThrow(() -> new RuntimeException("Group not found"));
+            message.setGroup(group);
+        }
+
+        ChatMessage savedMessage = chatMessageRepository.save(message);
+        ChatMessageDto dto = mapToDto(savedMessage);
+
+        // Broadcast to WebSockets
+        if (groupId != null) {
+            messagingTemplate.convertAndSend("/topic/group/" + groupId, dto);
+
+            List<ChatGroupMember> members = groupMemberRepository.findByGroupId(groupId);
+            for (ChatGroupMember member : members) {
+                if (!member.getUser().getId().equals(sender.getId())) {
+                    chatSidebarService.broadcastLiveUnreadCount(member.getUser());
+                }
+            }
+        } else {
+            messagingTemplate.convertAndSendToUser(message.getRecipient().getEmployeeCode(), "/queue/chat", dto);
+            messagingTemplate.convertAndSendToUser(message.getSender().getEmployeeCode(), "/queue/chat", dto);
+            chatSidebarService.broadcastLiveUnreadCount(message.getRecipient());
+        }
+
+        return dto;
+    }
+    @Transactional(readOnly = true)
+    public Page<ChatMessageDto> getAdminViewOfDirectMessages(Long employeeId, Long partnerId, Pageable pageable) {
+        log.debug("Admin fetching DMs between {} and {}", employeeId, partnerId);
+        Page<ChatMessage> messages = chatMessageRepository.findConversation(employeeId, partnerId, pageable);
+        return messages.map(this::mapToDto);
+    }
+
+    // =========================================================
+    // ADMIN VIEW: GROUP MESSAGES (Bypasses group membership check)
+    // =========================================================
+    @Transactional(readOnly = true)
+    public Page<ChatMessageDto> getAdminViewOfGroupMessages(Long groupId, Pageable pageable) {
+        log.debug("Admin fetching group messages for group {}", groupId);
+        Page<ChatMessage> messages = chatMessageRepository.findByGroupIdOrderByCreatedAtDesc(groupId, pageable);
+        return messages.map(this::mapToDto);
     }
 }

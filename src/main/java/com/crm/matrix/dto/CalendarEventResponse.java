@@ -1,5 +1,6 @@
 package com.crm.matrix.dto;
 
+import com.crm.matrix.enums.Department;
 import com.crm.matrix.enums.EventTargetType;
 import lombok.Builder;
 import lombok.Getter;
@@ -14,7 +15,8 @@ public class CalendarEventResponse {
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private EventTargetType targetType;
-    private Long targetId;
+    private Long targetId; // Used when targetType is INDIVIDUAL or TEAM
+    private Department targetDepartment; // Used when targetType is DEPARTMENT
     private String meetingLink;
     private String createdByName;
 }

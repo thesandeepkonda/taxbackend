@@ -2,10 +2,7 @@ package com.crm.matrix.service;
 
 import com.crm.matrix.dto.*;
 import com.crm.matrix.entity.*;
-import com.crm.matrix.enums.AssignmentPeriod;
-import com.crm.matrix.enums.CallStatus;
-import com.crm.matrix.enums.ClientStatus;
-import com.crm.matrix.enums.DocumentStatus;
+import com.crm.matrix.enums.*;
 import com.crm.matrix.repository.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -821,10 +818,21 @@ public class AdminCRMService {
 
     private AssignmentResponseDto mapAssignment(ClientAssignment assignment) {
         User employee = assignment.getEmployee();
-        String deptName = (employee.getDepartment() != null) ? employee.getDepartment().getName() : null;
+        String deptName = (employee.getDepartment() != null) ? employee.getDepartment().name() : null;
 
-        return AssignmentResponseDto.builder().assignmentId(assignment.getId()).clientId(assignment.getClient().getId()).clientName(assignment.getClient().getName()).employeeId(employee.getId()).employeeCode(employee.getEmployeeCode()).employeeName(employee.getFirstName() + " " + employee.getLastName()).departmentName(deptName) // MAP IT HERE
-                .active(assignment.getActive()).assignedAt(assignment.getAssignedAt()).endedAt(assignment.getEndedAt()).reason(assignment.getAssignmentReason()).build();
+        return AssignmentResponseDto.builder()
+                .assignmentId(assignment.getId())
+                .clientId(assignment.getClient().getId())
+                .clientName(assignment.getClient().getName())
+                .employeeId(employee.getId())
+                .employeeCode(employee.getEmployeeCode())
+                .employeeName(employee.getFirstName() + " " + employee.getLastName())
+                .departmentName(deptName) // MAP IT HERE
+                .active(assignment.getActive())
+                .assignedAt(assignment.getAssignedAt())
+                .endedAt(assignment.getEndedAt())
+                .reason(assignment.getAssignmentReason())
+                .build();
     }
 
     private AdminCallResponseDto mapCall(CallRecord call) {
@@ -1069,14 +1077,12 @@ public class AdminCRMService {
 
                 .build();
     }
-
     @Transactional
     public List<AdminClientResponseDto> bulkAssignToPreparation(BulkAssignPrepRequestDto request, Authentication authentication) {
-
         User admin = getAdmin(authentication);
         User prepEmployee = userRepository.findById(request.getPrepEmployeeId()).orElseThrow(() -> new RuntimeException("Prep Employee not found"));
 
-        if (prepEmployee.getDepartment() == null || !prepEmployee.getDepartment().getName().equalsIgnoreCase("PREPARATION")) {
+        if (prepEmployee.getDepartment() != Department.PREPARATION) {
             throw new RuntimeException("You can only assign these clients to an employee in the Preparation team.");
         }
 

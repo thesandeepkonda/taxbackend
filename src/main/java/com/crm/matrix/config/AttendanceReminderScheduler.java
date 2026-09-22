@@ -3,6 +3,7 @@ package com.crm.matrix.config;
 import com.crm.matrix.dto.AdminDailyAttendanceDto;
 import com.crm.matrix.entity.User;
 import com.crm.matrix.enums.AttendanceStatus;
+import com.crm.matrix.enums.Role;
 import com.crm.matrix.repository.UserRepository;
 import com.crm.matrix.service.AttendanceService;
 import com.crm.matrix.service.NotificationService;
@@ -46,7 +47,8 @@ public class AttendanceReminderScheduler {
 
         // 3. If there are absentees for this specific shift, notify admins
         if (!newlyAbsent.isEmpty()) {
-            List<User> admins = userRepository.findByRoleNameAndActiveTrue("ADMIN");
+            // Updated to use the Role Enum
+            List<User> admins = userRepository.findByRoleAndActiveTrue(Role.ADMIN);
 
             String title = "Shift Absence Alert";
             String message = newlyAbsent.size() + " employee(s) missed their " + targetShiftTime + " shift (30 min grace period passed).";

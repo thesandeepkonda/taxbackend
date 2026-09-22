@@ -1,5 +1,6 @@
 package com.crm.matrix.dto;
 
+import com.crm.matrix.enums.Department;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -18,6 +19,6 @@ public class CreateTeamRequest {
     )
     private String name;
 
-    @NotNull(message = "Department ID is required")
-    private Long departmentId;
+    @NotNull(message = "Department is required")
+    private Department department;
 }

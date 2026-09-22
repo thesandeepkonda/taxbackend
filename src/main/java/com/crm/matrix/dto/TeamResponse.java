@@ -1,5 +1,6 @@
 package com.crm.matrix.dto;
 
+import com.crm.matrix.enums.Department;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -11,9 +12,7 @@ public class TeamResponse {
 
     private String name;
 
-    private Long departmentId;
-
-    private String departmentName;
+    private Department department;
 
     private Long teamLeadId;
 

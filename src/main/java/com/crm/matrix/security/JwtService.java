@@ -26,149 +26,94 @@ public class JwtService {
     @Value("${jwt.refresh-expiration}")
     private long jwtRefreshExpiration;
 
-
-
     public String generateToken(User user, String role, Set<String> permissions) {
 
         return Jwts.builder()
-
                 .subject(user.getEmployeeCode())
-
                 .claim("tokenType", "ACCESS")
-
                 .claim("userId", user.getId())
-
                 .claim("employeeCode", user.getEmployeeCode())
-
                 .claim("role", role)
-
-                .claim("departmentId", user.getDepartment() != null ? user.getDepartment().getId() : null)
-
+                // Changed from departmentId to department string
+                .claim("department", user.getDepartment() != null ? user.getDepartment().name() : null)
                 .claim("teamId", user.getTeam() != null ? user.getTeam().getId() : null)
-
                 .claim("permissions", permissions)
-
                 .issuedAt(new Date())
-
                 .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
-
                 .signWith(getSigningKey())
-
                 .compact();
     }
-
-
 
     public String generateRefreshToken(User user) {
 
         return Jwts.builder()
-
                 .subject(user.getEmployeeCode())
-
                 .claim("tokenType", "REFRESH")
-
                 .claim("userId", user.getId())
-
                 .claim("employeeCode", user.getEmployeeCode())
-
                 .issuedAt(new Date())
-
                 .expiration(new Date(System.currentTimeMillis() + jwtRefreshExpiration))
-
                 .signWith(getSigningKey())
-
                 .compact();
     }
 
-
-
     public String extractUsername(String token) {
-
         return extractAllClaims(token).getSubject();
     }
 
-
     public Long extractUserId(String token) {
-
         return extractAllClaims(token).get("userId", Long.class);
     }
 
-
-
     public String extractRole(String token) {
-
         return extractAllClaims(token).get("role", String.class);
     }
 
-
-
-    public Long extractDepartmentId(String token) {
-
-        return extractAllClaims(token).get("departmentId", Long.class);
+    // Changed return type to String and claim key to "department"
+    public String extractDepartment(String token) {
+        return extractAllClaims(token).get("department", String.class);
     }
 
     public Long extractTeamId(String token) {
-
         return extractAllClaims(token).get("teamId", Long.class);
     }
 
-
-
+    @SuppressWarnings("unchecked")
     public List<String> extractPermissions(String token) {
-
         return extractAllClaims(token).get("permissions", List.class);
     }
 
-
-
     public String extractTokenType(String token) {
-
         return extractAllClaims(token).get("tokenType", String.class);
     }
 
-
     public boolean isAccessToken(String token) {
-
         return "ACCESS".equals(extractTokenType(token));
     }
 
-
     public boolean isRefreshToken(String token) {
-
         return "REFRESH".equals(extractTokenType(token));
     }
 
-
     public boolean isTokenValid(String token, UserDetails userDetails) {
-
         String employeeCode = extractUsername(token);
-
         return employeeCode != null && employeeCode.equals(userDetails.getUsername()) && isAccessToken(token) && !isTokenExpired(token);
     }
 
     private boolean isTokenExpired(String token) {
-
         return extractAllClaims(token).getExpiration().before(new Date());
     }
 
     private Claims extractAllClaims(String token) {
-
         return Jwts.parser()
-
                 .verifyWith(getSigningKey())
-
                 .build()
-
                 .parseSignedClaims(token)
-
                 .getPayload();
     }
 
-
     private SecretKey getSigningKey() {
-
         byte[] keyBytes = Decoders.BASE64.decode(jwtSecret);
-
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }

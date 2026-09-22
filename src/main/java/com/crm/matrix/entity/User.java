@@ -1,5 +1,7 @@
 package com.crm.matrix.entity;
 
+import com.crm.matrix.enums.Department;
+import com.crm.matrix.enums.Role;
 import com.crm.matrix.enums.WorkMode;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -83,12 +85,7 @@ public class User extends BaseEntity {
     private Boolean active = true;
 
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "department_id",
-            nullable = false
-    )
-    private Department department;
+
 
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -96,9 +93,6 @@ public class User extends BaseEntity {
     private Team team;
 
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "role_id")
-    private Role role;
 
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -153,4 +147,20 @@ public class User extends BaseEntity {
             length = 100
     )
     private String callHippoAgentId;
+
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role")
+    private Role role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "department")
+    private Department department;
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "user_permissions",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "permission_id")
+    )
+    private Set<Permission> permissions = new HashSet<>();
 }

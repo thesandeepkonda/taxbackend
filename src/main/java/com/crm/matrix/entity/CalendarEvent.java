@@ -1,5 +1,6 @@
 package com.crm.matrix.entity;
 
+import com.crm.matrix.enums.Department;
 import com.crm.matrix.enums.EventTargetType;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -8,8 +9,8 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "calendar_events", indexes = {
-    @Index(name = "idx_event_start_time", columnList = "start_time"),
-    @Index(name = "idx_event_target", columnList = "target_type, target_id")
+        @Index(name = "idx_event_start_time", columnList = "start_time"),
+        @Index(name = "idx_event_target", columnList = "target_type, target_id, target_department")
 })
 @Getter
 @Setter
@@ -36,7 +37,11 @@ public class CalendarEvent extends BaseEntity {
     private EventTargetType targetType;
 
     @Column(name = "target_id")
-    private Long targetId; // Null if targetType is ALL, otherwise UserId, TeamId, or DepartmentId
+    private Long targetId; // Used for UserId or TeamId. Null if targetType is ALL or DEPARTMENT.
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "target_department")
+    private Department targetDepartment; // Used only when targetType is DEPARTMENT.
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "created_by", nullable = false)

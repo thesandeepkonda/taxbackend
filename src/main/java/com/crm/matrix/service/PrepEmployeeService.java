@@ -3,6 +3,7 @@ package com.crm.matrix.service;
 import com.crm.matrix.dto.*;
 import com.crm.matrix.entity.*;
 import com.crm.matrix.enums.ClientStatus;
+import com.crm.matrix.enums.Department;
 import com.crm.matrix.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -119,7 +120,7 @@ public class PrepEmployeeService {
         }
     }
 
-    @Transactional // <--- Moved here so the whole flow shares a session/transaction
+    @Transactional
     public PrepClientResponseDto submitDraft(Long assignmentId, MultipartFile file, String remarks, Authentication authentication) {
         if (file == null || file.isEmpty()) {
             throw new RuntimeException("Draft file is required");
@@ -136,7 +137,6 @@ public class PrepEmployeeService {
         return finalizeDraftSubmissionInternal(assignmentId, version, file, savedFilePath, remarks, authentication);
     }
 
-    // Remove @Transactional from here since submitDraft now handles the transaction boundary
     protected PrepClientResponseDto finalizeDraftSubmissionInternal(Long assignmentId, int version,
                                                                     MultipartFile file, Path filePath, String remarks,
                                                                     Authentication authentication) {
@@ -171,6 +171,7 @@ public class PrepEmployeeService {
 
         return mapToPrepDto(assignment);
     }
+
     @Transactional(readOnly = true)
     protected Long validateAndGetClientIdForPrep(Long assignmentId, Authentication authentication) {
         User employee = getLoggedInUser(authentication);
@@ -208,45 +209,6 @@ public class PrepEmployeeService {
             throw new RuntimeException("Failed to save the draft file to the client folder", e);
         }
     }
-
-//    // --- HELPER 4: DATABASE UPDATE ---
-//    @Transactional
-//    protected PrepClientResponseDto finalizeDraftSubmission(Long assignmentId, int version,
-//                                                            MultipartFile file, Path filePath, String remarks,
-//                                                            Authentication authentication) {
-//
-//        User employee = getLoggedInUser(authentication);
-//        ClientAssignment assignment = assignmentRepository.findByIdAndEmployeeAndActiveTrue(assignmentId, employee)
-//                .orElseThrow(() -> new RuntimeException("Assignment not found or not active"));
-//        Client client = assignment.getClient();
-//
-//        TaxDraft draft = new TaxDraft();
-//        draft.setClient(client);
-//        draft.setPrepEmployee(employee);
-//        draft.setDraftVersion(version);
-//        draft.setFileName(file.getOriginalFilename());
-//        draft.setFilePath(filePath.toAbsolutePath().toString());
-//        draft.setContentType(file.getContentType());
-//        draft.setPrepRemarks(remarks);
-//        draft.setStatus("PENDING");
-//        taxDraftRepository.save(draft);
-//
-//        client.setStatus(ClientStatus.DRAFT_READY);
-//        client.setUpdatedAt(LocalDateTime.now());
-//        clientRepository.save(client);
-//
-//        if (assignment.getAssignedBy() != null) {
-//            notificationService.sendNotification(
-//                    assignment.getAssignedBy(),
-//                    "Tax Draft Ready",
-//                    employee.getFirstName() + " submitted a tax draft for client: " + client.getName(),
-//                    "DRAFT_READY","/clients"
-//            );
-//        }
-//
-//        // mapToPrepDto runs safely inside the transaction, avoiding LazyInit crashes
-//        return mapToPrepDto(assignment);
-//    }
 
     @Transactional(readOnly = true)
     public List<TaxDraftResponseDto> getClientDrafts(Long clientId) {
@@ -342,8 +304,8 @@ public class PrepEmployeeService {
         User newEmployee = userRepository.findById(request.getNewEmployeeId())
                 .orElseThrow(() -> new RuntimeException("Employee not found"));
 
-        if (newEmployee.getDepartment() == null
-                || !newEmployee.getDepartment().getName().equalsIgnoreCase("PREPARATION")) {
+        // Updated to use the Department enum
+        if (newEmployee.getDepartment() != Department.PREPARATION) {
             throw new RuntimeException("You can only reassign to an employee in the Preparation team.");
         }
 
@@ -371,8 +333,8 @@ public class PrepEmployeeService {
         User newEmployee = userRepository.findById(request.getNewEmployeeId())
                 .orElseThrow(() -> new RuntimeException("Employee not found"));
 
-        if (newEmployee.getDepartment() == null
-                || !newEmployee.getDepartment().getName().equalsIgnoreCase("PREPARATION")) {
+        // Updated to use the Department enum
+        if (newEmployee.getDepartment() != Department.PREPARATION) {
             throw new RuntimeException("You can only reassign to an employee in the Preparation team.");
         }
 

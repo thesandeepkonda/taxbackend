@@ -62,4 +62,15 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     // Fetch pinned messages in a Direct Chat
     @Query("SELECT m FROM ChatMessage m WHERE " + "((m.sender.id = :userId AND m.recipient.id = :partnerId) OR " + "(m.sender.id = :partnerId AND m.recipient.id = :userId)) " + "AND m.isPinned = true " + "AND NOT EXISTS (SELECT 1 FROM ChatMessage m2 JOIN m2.clearedBy cb WHERE m2.id = m.id AND cb = :userId) " + "ORDER BY m.createdAt DESC")
     List<ChatMessage> findPinnedDirectMessages(@Param("userId") Long userId, @Param("partnerId") Long partnerId);
+
+    @Query("SELECT m.id FROM ChatMessage m WHERE m.sender.id = :senderId AND m.recipient.id = :recipientId AND m.isRead = false")
+    List<Long> findUnreadMessageIds(Long senderId, Long recipientId);
+
+    // For Group Messages (If they have a previous read timestamp)
+    @Query("SELECT m.id FROM ChatMessage m WHERE m.group.id = :groupId AND m.createdAt > :lastReadAt")
+    List<Long> findUnreadGroupMessageIds(Long groupId, java.time.LocalDateTime lastReadAt);
+
+    // For Group Messages (If they have never opened the group before)
+    @Query("SELECT m.id FROM ChatMessage m WHERE m.group.id = :groupId")
+    List<Long> findAllGroupMessageIds(Long groupId);
 }
