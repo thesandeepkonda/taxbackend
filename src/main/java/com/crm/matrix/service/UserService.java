@@ -104,6 +104,10 @@ public class UserService {
         user.setTeam(team);
         user.setRole(role);
 
+         // user.setCallHippoAgentId(request.getCallHippoAgentId());
+        //user.setCallHippoApiToken(request.getCallHippoApiToken());
+        //user.setCallHippoFromNumber(request.getCallHippoFromNumber());
+
         User savedUser = userRepository.save(user);
 
         if (role == Role.TEAM_LEAD) {
